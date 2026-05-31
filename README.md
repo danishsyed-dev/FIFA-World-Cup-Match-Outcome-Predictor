@@ -189,7 +189,7 @@ Displays predicted vs. actual outcomes (Home Win, Draw, Away Win) for the best p
 
 ## 📄 License
 
-[MIT LICENSE](https://github.com/Danish-dev25/FIFA-World-Cup-Match-Outcome-Predictor/LICENSE) — free to use for educational and portfolio purposes.
+[MIT LICENSE](https://github.com/danishsyed-dev/FIFA-World-Cup-Match-Outcome-Predictor/blob/main/LICENSE) — free to use for educational and portfolio purposes.
 
 ---
 
