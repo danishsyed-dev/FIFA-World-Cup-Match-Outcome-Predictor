@@ -95,21 +95,21 @@ streamlit run app/streamlit_app.py
 ### 5. CLI Prediction
 
 ```bash
-python src/predict.py --team-a "Brazil" --team-b "Argentina" --tournament "FIFA World Cup"
+python src/predict.py --team-a "Portugal" --team-b "Germany" --tournament "FIFA World Cup"
 ```
 
 **Output:**
 ```
 =====================================================
-  ⚽  Brazil  vs  Argentina
+  ⚽  Portugal  vs  Germany
 =====================================================
-  Brazil Win : 47.3%  ████████████░░░░░░░░░░░░░
-  Draw       : 24.1%  ██████░░░░░░░░░░░░░░░░░░░
-  Argentina  : 28.6%  ███████░░░░░░░░░░░░░░░░░░
+  Portugal Win : 49.1%     ████████████████░░░░░░░░░░
+  Draw       : 24.4%       ██████░░░░░░░░░░░░░░░░░░░░
+  Germany  : 26.5%         █████████░░░░░░░░░░░░░░░░░
 
-  🏆 Predicted: Home Win
-  📊 Confidence: 47.3%
-  🔢 Elo  — Brazil: 2078  |  Argentina: 2044
+  🏆 Predicted: Portugal Win
+  📊 Confidence: 49.1%
+  🔢 Elo  — Portugal: 2012  |  Germany: 2012
 =====================================================
 ```
 
@@ -121,12 +121,30 @@ python src/predict.py --input fixtures.csv --output predictions.csv
 
 ---
 
-## 📈 Evaluation Metrics
+## 📊 Model Performance & Evaluation
 
-- Accuracy, Precision, Recall, F1-Score
-- Log Loss (probability calibration)
-- ROC-AUC (macro, one-vs-rest)
-- Confusion Matrix per model
+The pipeline trains and evaluates four different classification models. Here is how they compare on the test dataset:
+
+| Model | Accuracy | Log Loss | ROC-AUC |
+| :--- | :---: | :---: | :---: |
+| 🥇 **XGBoost** (Primary) | **59.52%** | **0.8779** | **0.7365** |
+| 🥈 Random Forest | 56.76% | 0.9179 | 0.7346 |
+| 🥉 LightGBM | 56.13% | 0.9091 | 0.7352 |
+| 📉 Logistic Regression (Baseline) | 55.80% | 0.9095 | 0.7359 |
+
+### 📈 Evaluation Plots
+
+#### 1. Model Metric Comparison
+Shows the comparative performance across Accuracy, Log Loss, and ROC-AUC.
+![Model Comparison](models/model_comparison.png)
+
+#### 2. XGBoost Feature Importance
+Visualizes the relative strength of the engineered features. The ELO rating difference is the dominant signal, followed by rolling goal averages and recent team form.
+![XGBoost Feature Importance](models/importance_xgboost.png)
+
+#### 3. XGBoost Confusion Matrix
+Displays predicted vs. actual outcomes (Home Win, Draw, Away Win) for the best performing XGBoost classifier.
+![XGBoost Confusion Matrix](models/confusion_xgboost.png)
 
 ---
 
@@ -140,16 +158,19 @@ python src/predict.py --input fixtures.csv --output predictions.csv
 
 ---
 
-## 🚀 Resume-Worthy Extensions
+## 🚀 Project Roadmap
 
-After the base project, add:
+**1**. [x] **Ensemble Classifiers**: Trained Logistic Regression, Random Forest, LightGBM, and XGBoost models.
 
-1. ☐ Random Forest + XGBoost models *(done)*
-2. ☐ Elo Calculator from Scratch *(done)*
-3. ☐ Feature Importance Dashboard
-4. ☐ World Cup Tournament Bracket Simulator
-5. ☐ Monte Carlo Simulation
-6. ☐ Live Match Prediction API (FastAPI)
+**2**. [x] **Elo Rating System**: Custom Elo rating calculator built from scratch using historical match results.
+
+**3**. [x] **Tactical Analytics Dashboard**: Interactive Streamlit web app showing ELO comparison, telemetry probability tracks, and matchup data sheets.
+
+**4**. [ ] **Bracket Simulator**: Simulator forecasting entire tournament brackets (e.g. FIFA World Cup, Euros).
+
+**5**. [ ] **Monte Carlo Simulations**: Monte Carlo match engine simulating matchups thousands of times to compute stable outcome variances.
+
+**6**. [ ] **Live Prediction API**: FastAPI microservice to expose prediction models via REST endpoints.
 
 ---
 
@@ -168,7 +189,7 @@ After the base project, add:
 
 ## 📄 License
 
-MIT License — free to use for educational and portfolio purposes.
+[MIT LICENSE](https://github.com/Danish-dev25/FIFA-World-Cup-Match-Outcome-Predictor/LICENSE) — free to use for educational and portfolio purposes.
 
 ---
 
