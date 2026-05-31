@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Models (large binary files)
+models/*.pkl
+models/*.joblib
+
+# Data files
+data/*.csv
+data/*.zip
+data/*.gz
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Streamlit
+.streamlit/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+predict_env/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kaggle API key
+kaggle.json
