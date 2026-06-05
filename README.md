@@ -1,196 +1,184 @@
-# FIFA Match Outcome Predictor
+# FIFA World Cup Match Outcome Predictor & Tournament Simulator
 
-A machine learning system that predicts the outcome of any international football match — **Win / Draw / Loss** — using historical data, Elo ratings, and recent form metrics.
-
-> **"Given Team A vs Team B, predict Win / Draw / Loss probability using historical international football data."**
+A production-grade, end-to-end Machine Learning pipeline and interactive simulation suite built to predict international football match outcomes (Win / Draw / Loss) and simulate the FIFA World Cup 2026 using historical data, custom Elo ratings, and rolling tactical form metrics.
 
 ---
 
-## 🏆 Features
+## 🧭 Project Blueprint & Data Flow
 
-| Feature | Description |
-|---------|-------------|
-| **Elo Rating System** | Built from scratch using the World Football Elo formula |
-| **Recent Form** | Last 5 matches — Win=3, Draw=1, Loss=0 |
-| **Goals Scored / Conceded** | Rolling average over last 5 matches |
-| **Head-to-Head Record** | Last 10 meetings between the two teams |
-| **Home Advantage** | Encoded as 1 (home) or 0 (neutral venue) |
-| **Tournament Weight** | Friendly → Qualifier → Continental → World Cup (0–4) |
+The architecture integrates data engineering, a custom chronological rating system, feature engineering, classification models, Monte Carlo simulation, and an interactive dashboard.
+
+```mermaid
+graph TD
+    %% Datasets
+    A1[data/results.csv<br/>Historical Matches] --> B[src/data_loader.py<br/>Data Loading & Normalization]
+    A2[data/elo.csv<br/>Optional Elo Override] --> B
+    
+    %% Elo Engine
+    B --> C[src/elo_calculator.py<br/>Chronological Elo Engine]
+    C -->|Calculate rating updates match-by-match| D[data/elo.csv<br/>Generated Elo Ratings]
+    
+    %% Feature Pipeline
+    D --> E[src/feature_engineering.py<br/>Rolling Tactical Metrics]
+    A1 --> E
+    
+    %% Training Pipeline
+    E -->|Engineer Features:<br/>Elo Diff, Form, Goals, H2H| F[src/train.py<br/>Model Trainer & Evaluator]
+    F -->|Train & Save Checkpoints| G[models/*.pkl<br/>Classifier Models]
+    F -->|Generate Evaluation Plots| H[models/*.png<br/>Metrics & Charts]
+    
+    %% Streamlit UI & Simulator
+    G --> I[app/streamlit_app.py<br/>Match Predictor Page]
+    D --> I
+    D --> J[app/pages/1_Group_Stage_Simulator.py<br/>Group & Bracket Simulator Page]
+    J -->|Run 10,000 Iterations| K[src/group_simulator.py<br/>Monte Carlo Tournament Engine]
+    
+    %% Server-side Export
+    I -->|Match Statistics| L[src/image_generator.py<br/>Matplotlib PNG Renderers]
+    J -->|Standings / Leaderboard / Bracket| L
+    L -->|Transparent PNG Streams| M[Streamlit st.download_button]
+```
 
 ---
 
-## 📊 Models
+## 🏆 Key Features
 
-| Model | Role |
-|-------|------|
-| Logistic Regression | Baseline |
-| Random Forest | Ensemble |
-| XGBoost | Primary |
-| LightGBM | Primary |
-
-**Target accuracy: 55–70%** (expert forecasters achieve ~55–60%)
+* **Custom Chronological Elo Engine**: Recalculates team ratings match-by-match from 1872 to the present day using the official World Football Elo formula.
+* **Rolling Form and Goal Metrics**: Computes team points (W=3, D=1, L=0), average goals scored, and goals conceded over a 5-match rolling window.
+* **Head-to-Head Records**: Incorporates matchup history from the last 10 meetings between the two teams.
+* **Monte Carlo Tournament Simulator**: Simulates the full 48-team FIFA World Cup 2026 (12 groups) 10,000 times to calculate round-by-round advancement probabilities.
+* **Knockout Bracket Simulator**: Resolves brackets with standard FIFA third-place allocation rules, backtracking algorithms to prevent group-mate rematches, and penalty shootout simulation.
+* **Server-Side Export Engine**: Renders high-resolution infographics, standing charts, leaderboards, and tree brackets as transparent PNGs served via native download prompts.
 
 ---
 
-## 🗂️ Project Structure
+## 🗂️ Project Directory Structure
 
 ```
-match-outcome-predictor/
+FIFA World Cup Match Outcome Predictor/
 ├── data/
-│   ├── results.csv          ← Download from Kaggle (see below)
-│   └── elo.csv              ← Optional Elo dataset
-├── notebooks/
-│   └── analysis.ipynb       ← EDA + feature exploration
+│   ├── results.csv            ← Historical international matches (1872–present)
+│   ├── shootouts.csv          ← Historical penalty shootout outcomes
+│   ├── goalscorers.csv        ← Historical match goalscorers
+│   ├── former_names.csv       ← Historical geopolitical team name mappings
+│   ├── elo.csv                ← Chronological ELO ratings (calculated or user-edited)
+│   └── README.md              ← Dataset descriptions and source details
 ├── src/
-│   ├── data_loader.py       ← Load & clean datasets
-│   ├── elo_calculator.py    ← Custom Elo rating system
-│   ├── feature_engineering.py ← All feature creation
-│   ├── train.py             ← Train & evaluate models
-│   └── predict.py           ← Prediction interface
-├── models/                  ← Saved .pkl model files
+│   ├── __init__.py            
+│   ├── data_loader.py         ← Cleans results and merges/normalizes Elo ratings
+│   ├── elo_calculator.py      ← Custom rating system implementation
+│   ├── feature_engineering.py   ← Generates rolling form, goal, and H2H statistics
+│   ├── train.py               ← Fits models (XGBoost, LightGBM, RF) and saves plots
+│   ├── predict.py             ← CLI inference interface and batch predictors
+│   ├── group_simulator.py     ← World Cup group & bracket Monte Carlo simulator
+│   └── image_generator.py     ← Server-side Matplotlib infographic PNG generators
+├── models/
+│   ├── best_model.pkl         ← Saved XGBoost model checkpoint
+│   ├── xgboost.pkl            ← Fitted XGBoost classifier
+│   ├── lightgbm.pkl           ← Fitted LightGBM classifier
+│   ├── random_forest.pkl      ← Fitted Random Forest classifier
+│   ├── logistic_regression.pkl← Fitted baseline Logistic Regression classifier
+│   ├── feature_cols.pkl       ← Saved training feature columns list
+│   └── *.png                  ← Metrics comparisons, confusion matrices, feature importance
 ├── app/
-│   └── streamlit_app.py     ← Interactive web dashboard
-├── requirements.txt
-├── PRD.md
-└── README.md
+│   ├── streamlit_app.py       ← Match outcome predictor UI page
+│   ├── shared_theme.py        ← Tactical dark-mode CSS theme & flag CDN utility
+│   └── pages/
+│       └── 1_Group_Stage_Simulator.py ← Multi-tab tournament simulation UI
+├── notebooks/
+│   └── analysis.ipynb         ← Exploratory data analysis notebook
+├── requirements.txt           ← Python virtual environment dependencies
+├── PRD.md                     ← Original Product Requirements Document
+└── README.md                  ← Detailed project manual (this file)
 ```
 
 ---
 
 ## ⚡ Quick Start
 
-### 1. Install Dependencies
+### 1. Environment Setup & Installation
+
+Clone this repository to your local system and install all required packages:
 
 ```bash
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Download Data
+### 2. Download Kaggle Datasets
 
-Download these datasets from Kaggle and place CSVs in `data/`:
+Ensure the following CSV files are placed in the `data/` directory:
+* **results.csv**, **shootouts.csv**, and **goalscorers.csv** from [International Football Results (1872–present)](https://www.kaggle.com/datasets/martj42/international-football-results-from-1872-to-2017)
+* **former_names.csv** (provided in the repository)
 
-- **results.csv** → [International Football Results 1872–2026](https://www.kaggle.com/datasets/martj42/international-football-results-from-1872-to-2017)
-- **elo.csv** (optional) → [International Football Elo Ratings](https://www.kaggle.com/datasets/saifalnimri/international-football-elo-ratings)
+### 3. Run Pipeline Training
 
-### 3. Train Models
+Execute the training script to clean data, recalculate the ELO history from scratch, generate rolling features, train the classifiers, and save model evaluation plots:
 
 ```bash
 python src/train.py
 ```
 
-This will:
-- Load and clean data
-- Calculate Elo ratings from scratch
-- Engineer all features
-- Train Logistic Regression, Random Forest, XGBoost, LightGBM
-- Save models to `models/`
-- Generate evaluation plots
+### 4. Run the Streamlit Interactive Dashboard
 
-### 4. Launch the Dashboard
+Launch the tactical web application locally:
 
 ```bash
 streamlit run app/streamlit_app.py
 ```
 
-### 5. CLI Prediction
-
-```bash
-python src/predict.py --team-a "Portugal" --team-b "Germany" --tournament "FIFA World Cup"
-```
-
-**Output:**
-```
-=====================================================
-  ⚽  Portugal  vs  Germany
-=====================================================
-  Portugal Win : 49.1%     ████████████████░░░░░░░░░░
-  Draw       : 24.4%       ██████░░░░░░░░░░░░░░░░░░░░
-  Germany  : 26.5%         █████████░░░░░░░░░░░░░░░░░
-
-  🏆 Predicted: Portugal Win
-  📊 Confidence: 49.1%
-  🔢 Elo  — Portugal: 2012  |  Germany: 2012
-=====================================================
-```
-
-### 6. Batch Predictions
-
-```bash
-python src/predict.py --input fixtures.csv --output predictions.csv
-```
-
 ---
 
-## 📊 Model Performance & Evaluation
+## ⚙️ Detailed Working & Pipelines
 
-The pipeline trains and evaluates four different classification models. Here is how they compare on the test dataset:
+### 1. Data Cleaning & Elo Engine
+* **Normalization**: [data_loader.py](file:///c:/Users/Danish/Desktop/GITHUB%20REPOS/FIFA%20World%20Cup%20Match%20Outcome%20Predictor/src/data_loader.py) cleans up geopolitical name changes (e.g., Soviet Union $\rightarrow$ Russia) and matches names to ISO codes for Flag CDN display.
+* **Elo Updates**: [elo_calculator.py](file:///c:/Users/Danish/Desktop/GITHUB%20REPOS/FIFA%20World%20Cup%20Match%20Outcome%20Predictor/src/elo_calculator.py) iterates chronologically through all matches since 1872. The rating update formula is:
+  $$R_{\text{new}} = R_{\text{old}} + K \times G \times (W - W_e)$$
+  where $K$ is the tournament weight, $G$ is a goal-difference modifier, $W$ is the actual outcome (1 = Win, 0.5 = Draw, 0 = Loss), and $W_e$ is the expected probability calculated using the sigmoid function:
+  $$W_e = \frac{1}{10^{-dR/400} + 1}$$
 
-| Model | Accuracy | Log Loss | ROC-AUC |
+### 2. Feature Engineering
+The pipeline in [feature_engineering.py](file:///c:/Users/Danish/Desktop/GITHUB%20REPOS/FIFA%20World%20Cup%20Match%20Outcome%20Predictor/src/feature_engineering.py) generates classification features for each match:
+* **Elo Difference**: Pre-match rating difference ($R_{\text{home}} - R_{\text{away}}$).
+* **Recent Form (5 matches)**: A weighted points average (Win = 3, Draw = 1, Loss = 0).
+* **Average Goals Scored & Conceded**: Rolling average of goals over the last 5 matches.
+* **Head-to-Head Record**: Percentage of home wins, away wins, and draws in the last 10 historical meetings.
+* **Venue Bias**: Binary encoding for home advantage (neutral vs. home).
+* **Tournament Importance**: Mapped weight (0 = Friendly, 1 = Qualifiers/Minor Cup, 2 = Continental Cup, 3 = FIFA World Cup).
+
+### 3. Machine Learning Models
+Four models are trained and compared in [train.py](file:///c:/Users/Danish/Desktop/GITHUB%20REPOS/FIFA%20World%20Cup%20Match%20Outcome%20Predictor/src/train.py):
+1. **XGBoost (Primary)**: Gradient-boosted decision trees. Achieves the highest test accuracy.
+2. **LightGBM**: Fast, leaf-wise gradient-boosted trees.
+3. **Random Forest**: Bagged decision tree ensemble.
+4. **Logistic Regression**: Baseline classifier.
+
+#### Model Performance Comparison:
+| Model | Test Accuracy | Log Loss | ROC-AUC |
 | :--- | :---: | :---: | :---: |
-| 🥇 **XGBoost** (Primary) | **59.52%** | **0.8779** | **0.7365** |
+| 🥇 **XGBoost** | **59.52%** | **0.8779** | **0.7365** |
 | 🥈 Random Forest | 56.76% | 0.9179 | 0.7346 |
 | 🥉 LightGBM | 56.13% | 0.9091 | 0.7352 |
-| 📉 Logistic Regression (Baseline) | 55.80% | 0.9095 | 0.7359 |
-
-### 📈 Evaluation Plots
-
-#### 1. Model Metric Comparison
-Shows the comparative performance across Accuracy, Log Loss, and ROC-AUC.
-![Model Comparison](models/model_comparison.png)
-
-#### 2. XGBoost Feature Importance
-Visualizes the relative strength of the engineered features. The ELO rating difference is the dominant signal, followed by rolling goal averages and recent team form.
-![XGBoost Feature Importance](models/importance_xgboost.png)
-
-#### 3. XGBoost Confusion Matrix
-Displays predicted vs. actual outcomes (Home Win, Draw, Away Win) for the best performing XGBoost classifier.
-![XGBoost Confusion Matrix](models/confusion_xgboost.png)
+| 📉 Logistic Regression | 55.80% | 0.9095 | 0.7359 |
 
 ---
 
-## 📚 Datasets Used
+## 🔮 Tournament Monte Carlo Simulator
 
-| Dataset | Source | Matches |
-|---------|--------|---------|
-| International Football Results | Kaggle (martj42) | 49,000+ |
-| Elo Ratings | Kaggle (saifalnimri) | Historical |
-| FIFA World Cup Matches | Kaggle (abecklas) | WC only |
+The World Cup 2026 Simulator in [group_simulator.py](file:///c:/Users/Danish/Desktop/GITHUB%20REPOS/FIFA%20World%20Cup%20Match%20Outcome%20Predictor/src/group_simulator.py) models the expanded 48-team, 12-group tournament:
 
----
-
-## 🚀 Project Roadmap
-
-**1**. [x] **Ensemble Classifiers**: Trained Logistic Regression, Random Forest, LightGBM, and XGBoost models.
-
-**2**. [x] **Elo Rating System**: Custom Elo rating calculator built from scratch using historical match results.
-
-**3**. [x] **Tactical Analytics Dashboard**: Interactive Streamlit web app showing ELO comparison, telemetry probability tracks, and matchup data sheets.
-
-**4**. [ ] **Bracket Simulator**: Simulator forecasting entire tournament brackets (e.g. FIFA World Cup, Euros).
-
-**5**. [ ] **Monte Carlo Simulations**: Monte Carlo match engine simulating matchups thousands of times to compute stable outcome variances.
-
-**6**. [ ] **Live Prediction API**: FastAPI microservice to expose prediction models via REST endpoints.
+1. **Group Stage**: Simulates all group stage fixtures using Poisson-distributed goal expectations. Teams are ranked inside each group based on FIFA rules (Points $\rightarrow$ Goal Difference $\rightarrow$ Goals Scored).
+2. **Third-Place Allocation**: Ranks all third-placed teams across the 12 groups, selects the 8 best, and allocates them into the Round of 32 knockout slots using a backtracking eligibility solver that respects bracket rules and prevents immediate group-mate rematches.
+3. **Knockout Stage**: Simulates matchups through the Round of 32, Round of 16, Quarterfinals, Semifinals, and Final. Draws are resolved with extra-time simulation and penalty shootouts (50/50 probability splits).
+4. **Aggregation**: Running the simulation 10,000 times generates probability thresholds for each nation's likelihood of reaching each round of the tournament.
 
 ---
 
-## 🛠️ Tech Stack
+## 💾 Server-Side PNG Export Engine
 
-| Component | Technology |
-|-----------|------------|
-| Language | Python 3.9+ |
-| Data | Pandas, NumPy |
-| ML | Scikit-Learn, XGBoost, LightGBM |
-| Visualization | Matplotlib, Seaborn, Plotly |
-| Dashboard | Streamlit |
-| Model Storage | Joblib (Pickle) |
+To bypass client-side CORS issues and iframe sandboxing limitations, the app utilizes a server-side rendering pipeline in [image_generator.py](file:///c:/Users/Danish/Desktop/GITHUB%20REPOS/FIFA%20World%20Cup%20Match%20Outcome%20Predictor/src/image_generator.py):
 
----
-
-## 📄 License
-
-[MIT LICENSE](https://github.com/danishsyed-dev/FIFA-World-Cup-Match-Outcome-Predictor/blob/main/LICENSE) — free to use for educational and portfolio purposes.
-
----
-
-*Based on PRD: [Match Outcome Predictor using International Football Data](PRD.md)*
+* **Matplotlib Infographics**: Custom rendering functions draw clean, telemetry-style dashboard cards (Matchup probabilities, Group Stage standings grids, full 48-team Leaderboards, and tree bracket charts) natively in Python.
+* **Transparent Fallback**: Images are saved with `transparent=True` in Matplotlib's `savefig` call. This removes solid background colors and allows the exported files to blend with any external slide deck, report, or dark/light container theme.
+* **Caching & Reloading**: Wrapped with `@st.cache_data(show_spinner=False)` to prevent redundant rendering lag. Added `importlib.reload` hot-reloading at startup to force Streamlit to refresh helper module edits immediately.
