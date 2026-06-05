@@ -18,7 +18,8 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 def load_results(filepath: str = None) -> pd.DataFrame:
     """Load the international football results dataset."""
     path = filepath or DATA_DIR / "results.csv"
-    df = pd.read_csv(path, parse_dates=["date"])
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
     print(f"[data_loader] Loaded results: {len(df):,} rows")
     return df
 
@@ -26,9 +27,12 @@ def load_results(filepath: str = None) -> pd.DataFrame:
 def load_elo(filepath: str = None) -> pd.DataFrame:
     """Load the Elo ratings dataset."""
     path = filepath or DATA_DIR / "elo.csv"
-    df = pd.read_csv(path, parse_dates=["date"])
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"], format="mixed", errors="coerce")
     # Normalise column names (different Kaggle datasets vary)
     df.columns = [c.lower().strip() for c in df.columns]
+    if "rating" in df.columns and "elo" not in df.columns:
+        df = df.rename(columns={"rating": "elo"})
     print(f"[data_loader] Loaded elo: {len(df):,} rows")
     return df
 

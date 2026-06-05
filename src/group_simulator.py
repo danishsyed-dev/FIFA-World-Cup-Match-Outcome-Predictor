@@ -297,43 +297,351 @@ def _estimate_third_place_advancement(
     return result
 
 
+def simulate_knockout_match(
+    team_a: str,
+    team_b: str,
+    elo_ratings: Dict[str, float],
+    rng: np.random.Generator,
+) -> dict:
+    """
+    Simulates a single knockout match. If it's a draw after 90 mins,
+    it simulates extra time and, if needed, a penalty shootout (50/50 split).
+    """
+    elo_a = elo_ratings.get(team_a, FALLBACK_ELO.get(team_a, 1500))
+    elo_b = elo_ratings.get(team_b, FALLBACK_ELO.get(team_b, 1500))
+    
+    goals_a, goals_b = simulate_match_score(elo_a, elo_b, rng)
+    
+    extra_time = False
+    penalties = False
+    
+    score_a = goals_a
+    score_b = goals_b
+    
+    if score_a == score_b:
+        extra_time = True
+        # Extra time (30 mins, total expected goals ~0.8)
+        expected_a = 1.0 / (1.0 + 10 ** ((elo_b - elo_a) / 400.0))
+        lambda_a = 0.8 * (0.3 + 0.4 * expected_a)
+        lambda_b = 0.8 * (0.3 + 0.4 * (1 - expected_a))
+        et_a = rng.poisson(lambda_a)
+        et_b = rng.poisson(lambda_b)
+        
+        score_a += et_a
+        score_b += et_b
+        
+        if score_a == score_b:
+            penalties = True
+            
+    if penalties:
+        # Penalty shootout is simulated as a coin flip
+        winner = team_a if rng.random() < 0.5 else team_b
+    else:
+        winner = team_a if score_a > score_b else team_b
+        
+    return {
+        "team_a": team_a,
+        "team_b": team_b,
+        "score_a": score_a,
+        "score_b": score_b,
+        "winner": winner,
+        "extra_time": extra_time,
+        "penalties": penalties,
+    }
+
+
+def allocate_third_places(third_places: List[dict]) -> Dict[str, dict]:
+    """
+    Allocate the 8 best third-placed teams to the 8 slots in the Round of 32.
+    Obeys FIFA allocation rules and prevents group-mate rematches.
+    """
+    advancing_teams = third_places[:8]
+    slots = {
+        "1E": ["A", "B", "C", "D", "F"],
+        "1I": ["C", "D", "F", "G", "H"],
+        "1A": ["C", "E", "F", "H", "I"],
+        "1L": ["E", "H", "I", "J", "K"],
+        "1G": ["A", "E", "H", "I", "J"],
+        "1D": ["B", "E", "F", "I", "J"],
+        "1B": ["E", "F", "G", "I", "J"],
+        "1K": ["D", "E", "I", "J", "L"],
+    }
+    assignment = {}
+    used_teams = set()
+    slot_keys = list(slots.keys())
+    
+    def backtrack(slot_idx):
+        if slot_idx == len(slot_keys):
+            return True
+        slot = slot_keys[slot_idx]
+        eligible_groups = slots[slot]
+        for team_info in advancing_teams:
+            team_name = team_info["team"]
+            team_group = team_info["group"]
+            if team_name not in used_teams and team_group in eligible_groups and team_group != slot[1:]:
+                assignment[slot] = team_info
+                used_teams.add(team_name)
+                if backtrack(slot_idx + 1):
+                    return True
+                used_teams.remove(team_name)
+                del assignment[slot]
+        return False
+        
+    if backtrack(0):
+        return assignment
+    else:
+        # Fallback allocation if backtrack fails (highly unlikely)
+        return {slot_keys[i]: advancing_teams[i] for i in range(8)}
+
+
+def simulate_single_tournament(
+    elo_ratings: Dict[str, float],
+    rng: np.random.Generator,
+) -> dict:
+    """
+    Simulates one full World Cup 2026 (Group Stage + 32-team Knockout Stage).
+    Returns the furthest stage reached by each team and the full bracket results.
+    """
+    # 1. Simulate Group Stage
+    group_standings = {}
+    third_placed = []
+    
+    for group_name, teams in WC2026_GROUPS.items():
+        standings = _simulate_group_once(teams, elo_ratings, rng)
+        group_standings[group_name] = standings
+        for entry in standings:
+            if entry["position"] == 3:
+                third_placed.append({
+                    "team": entry["team"],
+                    "group": group_name,
+                    "pts": entry["pts"],
+                    "gd": entry["gd"],
+                    "gf": entry["gf"],
+                })
+                
+    # Rank 3rd place teams
+    third_placed = sorted(
+        third_placed,
+        key=lambda x: (x["pts"], x["gd"], x["gf"], rng.random()),
+        reverse=True,
+    )
+    
+    third_place_assignments = allocate_third_places(third_placed)
+    
+    # Helper to resolve qualifiers
+    def get_team(rank_type: str) -> str:
+        if rank_type.startswith("3_"):
+            slot = rank_type[2:]
+            return third_place_assignments[slot]["team"]
+        pos = int(rank_type[0])
+        group = rank_type[1]
+        return group_standings[group][pos - 1]["team"]
+
+    # 2. Round of 32 Pairings (predetermined by FIFA)
+    r32_pairings = [
+        ("2A", "2B"),       # Match 1
+        ("1C", "2F"),       # Match 2
+        ("1E", "3_1E"),     # Match 3
+        ("1F", "2C"),       # Match 4
+        ("2E", "2I"),       # Match 5
+        ("1I", "3_1I"),     # Match 6
+        ("1A", "3_1A"),     # Match 7
+        ("1L", "3_1L"),     # Match 8
+        ("1G", "3_1G"),     # Match 9
+        ("1D", "3_1D"),     # Match 10
+        ("1H", "2J"),       # Match 11
+        ("2K", "2L"),       # Match 12
+        ("1B", "3_1B"),     # Match 13
+        ("2D", "2G"),       # Match 14
+        ("1J", "2H"),       # Match 15
+        ("1K", "3_1K"),     # Match 16
+    ]
+    
+    r32_matches = []
+    for pair in r32_pairings:
+        res = simulate_knockout_match(get_team(pair[0]), get_team(pair[1]), elo_ratings, rng)
+        r32_matches.append(res)
+        
+    # 3. Round of 16
+    r16_pairings = [
+        (r32_matches[0]["winner"], r32_matches[2]["winner"]),   # Match 17 (W1 vs W3)
+        (r32_matches[1]["winner"], r32_matches[4]["winner"]),   # Match 18 (W2 vs W5)
+        (r32_matches[3]["winner"], r32_matches[5]["winner"]),   # Match 19 (W4 vs W6)
+        (r32_matches[6]["winner"], r32_matches[7]["winner"]),   # Match 20 (W7 vs W8)
+        (r32_matches[10]["winner"], r32_matches[11]["winner"]), # Match 21 (W11 vs W12)
+        (r32_matches[8]["winner"], r32_matches[9]["winner"]),   # Match 22 (W9 vs W10)
+        (r32_matches[13]["winner"], r32_matches[15]["winner"]), # Match 23 (W14 vs W16)
+        (r32_matches[12]["winner"], r32_matches[14]["winner"]), # Match 24 (W13 vs W15)
+    ]
+    
+    r16_matches = []
+    for pair in r16_pairings:
+        res = simulate_knockout_match(pair[0], pair[1], elo_ratings, rng)
+        r16_matches.append(res)
+        
+    # 4. Quarterfinals
+    qf_pairings = [
+        (r16_matches[0]["winner"], r16_matches[1]["winner"]),   # QF1 (W17 vs W18)
+        (r16_matches[4]["winner"], r16_matches[5]["winner"]),   # QF2 (W21 vs W22)
+        (r16_matches[2]["winner"], r16_matches[3]["winner"]),   # QF3 (W19 vs W20)
+        (r16_matches[6]["winner"], r16_matches[7]["winner"]),   # QF4 (W23 vs W24)
+    ]
+    
+    qf_matches = []
+    for pair in qf_pairings:
+        res = simulate_knockout_match(pair[0], pair[1], elo_ratings, rng)
+        qf_matches.append(res)
+        
+    # 5. Semifinals
+    sf_pairings = [
+        (qf_matches[0]["winner"], qf_matches[1]["winner"]),     # SF1 (W25 vs W26)
+        (qf_matches[2]["winner"], qf_matches[3]["winner"]),     # SF2 (W27 vs W28)
+    ]
+    
+    sf_matches = []
+    for pair in sf_pairings:
+        res = simulate_knockout_match(pair[0], pair[1], elo_ratings, rng)
+        sf_matches.append(res)
+        
+    # 6. Final
+    final_match = simulate_knockout_match(sf_matches[0]["winner"], sf_matches[1]["winner"], elo_ratings, rng)
+    
+    # 7. Collect furthest round
+    furthest = {}
+    all_teams = [t for group in WC2026_GROUPS.values() for t in group]
+    for t in all_teams:
+        furthest[t] = "Group Stage"
+        
+    for m in r32_matches:
+        furthest[m["team_a"]] = "R32"
+        furthest[m["team_b"]] = "R32"
+    for m in r16_matches:
+        furthest[m["team_a"]] = "R16"
+        furthest[m["team_b"]] = "R16"
+    for m in qf_matches:
+        furthest[m["team_a"]] = "QF"
+        furthest[m["team_b"]] = "QF"
+    for m in sf_matches:
+        furthest[m["team_a"]] = "SF"
+        furthest[m["team_b"]] = "SF"
+        
+    furthest[final_match["team_a"]] = "Finalist"
+    furthest[final_match["team_b"]] = "Finalist"
+    furthest[final_match["winner"]] = "Champion"
+    
+    return {
+        "furthest": furthest,
+        "knockouts": {
+            "r32": r32_matches,
+            "r16": r16_matches,
+            "qf": qf_matches,
+            "sf": sf_matches,
+            "final": final_match,
+        }
+    }
+
+
+def simulate_full_tournament_monte_carlo(
+    elo_ratings: Dict[str, float],
+    n_sims: int = 10000,
+    seed: Optional[int] = 42,
+) -> pd.DataFrame:
+    """
+    Runs full World Cup 2026 simulations (Groups + Knockouts) n_sims times.
+    Calculates exact cumulative progression percentages for each team.
+    """
+    rng = np.random.default_rng(seed)
+    
+    all_teams = [t for group in WC2026_GROUPS.values() for t in group]
+    stage_counts = {
+        t: {"R32": 0, "R16": 0, "QF": 0, "SF": 0, "Final": 0, "Champion": 0}
+        for t in all_teams
+    }
+    
+    group_stage_stats = {t: {"top2": 0, "pts": 0, "gd": 0} for t in all_teams}
+    position_counts = {t: {1: 0, 2: 0, 3: 0, 4: 0} for t in all_teams}
+
+    for _ in range(n_sims):
+        # 1. Group Stage Standing Tracking
+        for group_name, teams in WC2026_GROUPS.items():
+            standings = _simulate_group_once(teams, elo_ratings, rng)
+            for entry in standings:
+                t = entry["team"]
+                pos = entry["position"]
+                position_counts[t][pos] += 1
+                group_stage_stats[t]["pts"] += entry["pts"]
+                group_stage_stats[t]["gd"] += entry["gd"]
+                if pos <= 2:
+                    group_stage_stats[t]["top2"] += 1
+                    
+        # 2. Knockout Progression Tracking
+        sim_res = simulate_single_tournament(elo_ratings, rng)
+        furthest = sim_res["furthest"]
+        for t, stage in furthest.items():
+            if stage == "Champion":
+                stage_counts[t]["Champion"] += 1
+                stage_counts[t]["Final"] += 1
+                stage_counts[t]["SF"] += 1
+                stage_counts[t]["QF"] += 1
+                stage_counts[t]["R16"] += 1
+                stage_counts[t]["R32"] += 1
+            elif stage == "Finalist":
+                stage_counts[t]["Final"] += 1
+                stage_counts[t]["SF"] += 1
+                stage_counts[t]["QF"] += 1
+                stage_counts[t]["R16"] += 1
+                stage_counts[t]["R32"] += 1
+            elif stage == "SF":
+                stage_counts[t]["SF"] += 1
+                stage_counts[t]["QF"] += 1
+                stage_counts[t]["R16"] += 1
+                stage_counts[t]["R32"] += 1
+            elif stage == "QF":
+                stage_counts[t]["QF"] += 1
+                stage_counts[t]["R16"] += 1
+                stage_counts[t]["R32"] += 1
+            elif stage == "R16":
+                stage_counts[t]["R16"] += 1
+                stage_counts[t]["R32"] += 1
+            elif stage == "R32":
+                stage_counts[t]["R32"] += 1
+
+    rows = []
+    for group_name, teams in WC2026_GROUPS.items():
+        for t in teams:
+            elo = elo_ratings.get(t, FALLBACK_ELO.get(t, 1500))
+            rows.append({
+                "team": t,
+                "group": group_name,
+                "elo": elo,
+                "1st": position_counts[t][1] / n_sims * 100,
+                "2nd": position_counts[t][2] / n_sims * 100,
+                "3rd": position_counts[t][3] / n_sims * 100,
+                "4th": position_counts[t][4] / n_sims * 100,
+                "top2_pct": group_stage_stats[t]["top2"] / n_sims * 100,
+                "avg_pts": group_stage_stats[t]["pts"] / n_sims,
+                "avg_gd": group_stage_stats[t]["gd"] / n_sims,
+                "r32_pct": stage_counts[t]["R32"] / n_sims * 100,
+                "r16_pct": stage_counts[t]["R16"] / n_sims * 100,
+                "qf_pct": stage_counts[t]["QF"] / n_sims * 100,
+                "sf_pct": stage_counts[t]["SF"] / n_sims * 100,
+                "final_pct": stage_counts[t]["Final"] / n_sims * 100,
+                "champion_pct": stage_counts[t]["Champion"] / n_sims * 100,
+                "advance_pct": stage_counts[t]["R32"] / n_sims * 100,
+            })
+            
+    return pd.DataFrame(rows)
+
+
 def simulate_all_groups(
     elo_ratings: Dict[str, float],
     n_sims: int = 10000,
     seed: Optional[int] = 42,
 ) -> pd.DataFrame:
     """
-    Run Monte Carlo simulation for all 12 World Cup 2026 groups.
-
-    Returns a combined DataFrame with per-team advancement probabilities
-    including the 3rd-place advancement estimate.
+    Backward-compatible wrapper. Calls the full Monte Carlo tournament engine.
     """
-    all_results = []
-    all_third_records = []
-
-    for group_name, teams in WC2026_GROUPS.items():
-        group_df, third_records = simulate_group(
-            group_name, teams, elo_ratings, n_sims, seed
-        )
-        all_results.append(group_df)
-        all_third_records.extend(third_records)
-
-    combined = pd.concat(all_results, ignore_index=True)
-
-    # Estimate 3rd-place advancement
-    third_advance = _estimate_third_place_advancement(
-        all_third_records, n_sims, n_advancing=8
-    )
-
-    # Add total advancement probability (top2 + 3rd-place advancement)
-    combined["third_advance_pct"] = combined["team"].map(
-        lambda t: third_advance.get(t, 0.0)
-    )
-    combined["advance_pct"] = combined["top2_pct"] + combined["third_advance_pct"]
-    # Cap at 100%
-    combined["advance_pct"] = combined["advance_pct"].clip(upper=100.0)
-
-    return combined
+    return simulate_full_tournament_monte_carlo(elo_ratings, n_sims, seed)
 
 
 # ── Quick test ────────────────────────────────────────────────────────────────

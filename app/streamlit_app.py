@@ -13,10 +13,21 @@ from pathlib import Path
 # Add project root to python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import importlib
+import src.image_generator
+importlib.reload(src.image_generator)
+
+from src.data_loader import load_all, load_elo, DATA_DIR
+from src.image_generator import generate_matchup_png
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+
+@st.cache_data(show_spinner=False)
+def get_cached_matchup_png(home_team, away_team, home_elo, away_elo, hw, dr, aw, predicted, confidence):
+    return generate_matchup_png(home_team, away_team, home_elo, away_elo, hw, dr, aw, predicted, confidence)
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -343,6 +354,7 @@ st.markdown(
             width: 100%;
         }
     }
+    
     </style>
     """,
     unsafe_allow_html=True,
@@ -481,7 +493,7 @@ def main():
         st.session_state.home_team = home_team
 
         # Swap button between teams (no emojis)
-        if st.button("SWAP HOME & AWAY", use_container_width=True):
+        if st.button("SWAP HOME & AWAY", width='stretch'):
             st.session_state.home_team, st.session_state.away_team = st.session_state.away_team, st.session_state.home_team
             st.rerun()
 
@@ -501,7 +513,7 @@ def main():
         st.session_state.neutral = neutral
 
         st.markdown("---")
-        predict_btn = st.button("RUN PREDICTION TELEMETRY", use_container_width=True)
+        predict_btn = st.button("RUN PREDICTION TELEMETRY", width='stretch')
 
         st.markdown("---")
         st.markdown('<div class="sidebar-header">TECHNICAL ABOUT</div>', unsafe_allow_html=True)
@@ -544,7 +556,7 @@ def main():
             f"""
             <div class="matchup-billboard">
                 <div class="team-panel home-panel">
-                    <img class="team-flag" src="{home_flag_url}" alt="{home_team}" />
+                    <img class="team-flag" src="{home_flag_url}" alt="{home_team}" crossorigin="anonymous" />
                     <div class="team-info">
                         <span class="team-role">HOME</span>
                         <h2 class="team-name">{home_team}</h2>
@@ -557,7 +569,7 @@ def main():
                     <div class="vs-venue">{venue_text}</div>
                 </div>
                 <div class="team-panel away-panel">
-                    <img class="team-flag" src="{away_flag_url}" alt="{away_team}" />
+                    <img class="team-flag" src="{away_flag_url}" alt="{away_team}" crossorigin="anonymous" />
                     <div class="team-info">
                         <span class="team-role">AWAY</span>
                         <h2 class="team-name">{away_team}</h2>
@@ -616,7 +628,7 @@ def main():
         with left:
             st.plotly_chart(
                 elo_comparison_chart(home_team, away_team, home_elo, away_elo),
-                use_container_width=True,
+                width='stretch',
             )
 
         with right:
@@ -688,7 +700,28 @@ def main():
                 unsafe_allow_html=True
             )
 
-        st.markdown("<br>", unsafe_allow_html=True)
+        matchup_png_bytes = get_cached_matchup_png(
+            home_team=home_team,
+            away_team=away_team,
+            home_elo=home_elo,
+            away_elo=away_elo,
+            hw=hw,
+            dr=dr,
+            aw=aw,
+            predicted=predicted,
+            confidence=confidence
+        )
+
+        col_dummy, col_btn = st.columns([3, 1])
+        with col_btn:
+            st.download_button(
+                label="EXPORT MATCHUP PNG",
+                data=matchup_png_bytes,
+                file_name=f"{home_team.lower()}_vs_{away_team.lower()}_prediction.png",
+                mime="image/png",
+                width='stretch',
+                key="download_matchup_btn"
+            )
 
         # ── Batch simulation ──────────────────────────────────────────────
         with st.expander("BATCH PREDICTION SIMULATOR"):
@@ -697,7 +730,7 @@ def main():
             if uploaded:
                 fixtures = pd.read_csv(uploaded)
                 predictions = predictor.predict_batch(fixtures)
-                st.dataframe(predictions, use_container_width=True)
+                st.dataframe(predictions, width='stretch')
                 csv_bytes = predictions.to_csv(index=False).encode()
                 st.download_button("DOWNLOAD PREDICTIONS", csv_bytes, "predictions.csv", "text/csv")
 

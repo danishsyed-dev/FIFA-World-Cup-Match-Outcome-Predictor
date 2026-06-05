@@ -16,11 +16,30 @@ from pathlib import Path
 # Add project root to python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+import importlib
+import src.image_generator
+importlib.reload(src.image_generator)
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
+@st.cache_data(show_spinner=False)
+def get_cached_group_standings_png(results, selected_view):
+    from src.image_generator import generate_group_standings_png
+    return generate_group_standings_png(results, selected_view)
+
+@st.cache_data(show_spinner=False)
+def get_cached_progression_png(results):
+    from src.image_generator import generate_progression_png
+    return generate_progression_png(results)
+
+@st.cache_data(show_spinner=False)
+def get_cached_bracket_png(bracket_data):
+    from src.image_generator import generate_bracket_png
+    return generate_bracket_png(bracket_data)
 
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -99,7 +118,10 @@ st.markdown("""
     font-size: 1rem;
     font-weight: 700;
     color: var(--title-color);
-    min-width: 160px;
+    width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .sim-team-elo {
     font-family: 'Space Grotesk', sans-serif;
@@ -257,6 +279,116 @@ st.markdown("""
     color: #10b981;
     border: 1px solid rgba(16, 185, 129, 0.3);
 }
+
+/* ── Bracket Tree Styling ────────────────────────────────────── */
+.bracket-wrapper {
+    display: flex;
+    gap: 1.5rem;
+    overflow-x: auto;
+    padding: 1.5rem 0.5rem;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    min-width: 1100px;
+    margin-top: 1rem;
+}
+.bracket-column {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    height: 980px;
+    flex: 1;
+    min-width: 200px;
+}
+.bracket-match {
+    background: color-mix(in srgb, var(--card-bg), #fff 2%);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    padding: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.bracket-team {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.4rem;
+    border-radius: 4px;
+}
+.bracket-team.winner {
+    background: rgba(16, 185, 129, 0.08);
+}
+.bracket-team.winner .bracket-team-name {
+    color: #10b981;
+    font-weight: 700;
+}
+.bracket-team.winner .bracket-team-score {
+    color: #10b981;
+    font-weight: 800;
+}
+.bracket-team-flag {
+    width: 20px;
+    height: auto;
+    border-radius: 2px;
+}
+.bracket-team-name {
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.8rem;
+    color: var(--text-color);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100px;
+}
+.bracket-team-score {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    min-width: 15px;
+    text-align: right;
+}
+.bracket-match-header {
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+    text-transform: uppercase;
+    border-bottom: 1px solid color-mix(in srgb, var(--card-border), transparent 30%);
+    padding-bottom: 0.15rem;
+}
+.champion-box {
+    text-align: center;
+    background: rgba(16, 185, 129, 0.06);
+    border: 2px solid #10b981;
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+}
+.champion-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    color: #10b981;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+.champion-flag {
+    width: 48px;
+    height: auto;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+}
+.champion-name {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #10b981;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -306,6 +438,37 @@ def get_progress_color(pct: float) -> str:
     return "#f87171"
 
 
+def render_match_html(match: dict, match_title: str) -> str:
+    flag_a = get_flag_url(match["team_a"])
+    flag_b = get_flag_url(match["team_b"])
+    
+    winner = match["winner"]
+    win_a = "winner" if winner == match["team_a"] else ""
+    win_b = "winner" if winner == match["team_b"] else ""
+    
+    match_status = ""
+    if match["penalties"]:
+        match_status = " (PEN)"
+    elif match["extra_time"]:
+        match_status = " (AET)"
+        
+    return f"""
+    <div class="bracket-match">
+        <div class="bracket-match-header">{match_title}{match_status}</div>
+        <div class="bracket-team {win_a}">
+            <img class="bracket-team-flag" src="{flag_a}" crossorigin="anonymous" />
+            <span class="bracket-team-name">{match["team_a"]}</span>
+            <span class="bracket-team-score">{match["score_a"]}</span>
+        </div>
+        <div class="bracket-team {win_b}">
+            <img class="bracket-team-flag" src="{flag_b}" crossorigin="anonymous" />
+            <span class="bracket-team-name">{match["team_b"]}</span>
+            <span class="bracket-team-score">{match["score_b"]}</span>
+        </div>
+    </div>
+    """
+
+
 def build_group_chart(group_df: pd.DataFrame, group_name: str) -> go.Figure:
     """Build a horizontal stacked bar chart for group position probabilities."""
     group_df = group_df.sort_values("advance_pct", ascending=True)
@@ -336,7 +499,7 @@ def build_group_chart(group_df: pd.DataFrame, group_name: str) -> go.Figure:
         barmode="stack",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(t=10, b=10, l=0, r=15),
+        margin=dict(t=10, b=10, l=150, r=15),
         height=180,
         xaxis=dict(
             range=[0, 100],
@@ -347,7 +510,7 @@ def build_group_chart(group_df: pd.DataFrame, group_name: str) -> go.Figure:
         yaxis=dict(
             showgrid=False,
             tickfont=dict(size=12, family="Outfit", weight="bold"),
-            automargin=True,
+            automargin=False,
         ),
         legend=dict(
             orientation="h",
@@ -370,7 +533,7 @@ def build_group_chart(group_df: pd.DataFrame, group_name: str) -> go.Figure:
 
 def main():
     # ── Header ────────────────────────────────────────────────────────────
-    st.markdown("""
+    st.html("""
     <div class="tactical-header">
         <div class="telemetry-badge">MONTE CARLO SIMULATION ENGINE v1.0</div>
         <h1 class="tactical-title">
@@ -381,7 +544,7 @@ def main():
         </h1>
         <p class="tactical-subtitle">Simulating all 48 teams across 12 groups — FIFA World Cup 2026</p>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
     # ── Load Elo Ratings ──────────────────────────────────────────────────
     elo_ratings = load_elo_ratings()
@@ -404,7 +567,7 @@ def main():
 
         st.markdown("---")
 
-        run_btn = st.button("RUN SIMULATION", use_container_width=True)
+        run_btn = st.button("RUN SIMULATION", width='stretch')
 
         st.markdown("---")
         st.markdown('<div class="sidebar-header">ABOUT THIS MODEL</div>', unsafe_allow_html=True)
@@ -434,7 +597,7 @@ def main():
 
     if results is None:
         # Show initial state — group overview with Elo ratings
-        st.markdown("""
+        st.html("""
         <div class="group-card" style="text-align: center; padding: 3rem 2rem;">
             <div class="group-letter" style="font-size: 3rem; margin-bottom: 1rem;">⚙</div>
             <div style="font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--title-color); margin-bottom: 0.5rem;">
@@ -444,154 +607,199 @@ def main():
                 Configure the number of simulations in the sidebar, then press <strong>RUN SIMULATION</strong> to begin.
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """)
 
         # Show groups preview
-        st.markdown("""
+        st.html("""
         <div style="font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 700;
                     letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 1rem; text-transform: uppercase;">
             Tournament Groups — Pre-Simulation Overview
         </div>
-        """, unsafe_allow_html=True)
+        """)
 
-        cols = st.columns(3)
-        for idx, (group_name, teams) in enumerate(WC2026_GROUPS.items()):
-            with cols[idx % 3]:
-                flags_html = ""
-                for t in teams:
-                    flag = get_flag_url(t)
-                    elo = elo_ratings.get(t, FALLBACK_ELO.get(t, 1500))
-                    flags_html += f"""
-                    <div class="sim-team-row">
-                        <img class="sim-team-flag" src="{flag}" alt="{t}" />
-                        <span class="sim-team-name">{t}</span>
-                        <span class="sim-team-elo">{elo:.0f}</span>
-                    </div>
-                    """
+        group_names = list(WC2026_GROUPS.keys())
+        for idx in range(0, len(group_names), 3):
+            row_groups = group_names[idx:idx+3]
+            cols = st.columns(3)
+            for col_idx, group_name in enumerate(row_groups):
+                with cols[col_idx]:
+                    teams = WC2026_GROUPS[group_name]
+                    flags_html = ""
+                    for t in teams:
+                        flag = get_flag_url(t)
+                        elo = elo_ratings.get(t, FALLBACK_ELO.get(t, 1500))
+                        flags_html += f"""
+                        <div class="sim-team-row">
+                            <img class="sim-team-flag" src="{flag}" alt="{t}" crossorigin="anonymous" />
+                            <span class="sim-team-name">{t}</span>
+                            <span class="sim-team-elo">{elo:.0f}</span>
+                        </div>
+                        """
 
-                st.markdown(f"""
-                <div class="group-card">
-                    <div class="group-card-header">
-                        <span class="group-letter">{group_name}</span>
-                        <span class="group-label">Group</span>
+                    st.html(f"""
+                    <div class="group-card">
+                        <div class="group-card-header">
+                            <span class="group-letter">{group_name}</span>
+                            <span class="group-label">Group</span>
+                        </div>
+                        {flags_html}
                     </div>
-                    {flags_html}
-                </div>
-                """, unsafe_allow_html=True)
+                    """)
 
         return  # Stop here until simulation is run
 
     # ── Post-simulation display ───────────────────────────────────────────
-    st.markdown(f"""
+    st.html(f"""
     <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
         <span class="sim-status sim-complete">SIMULATION COMPLETE</span>
         <span style="font-family: 'Space Grotesk', sans-serif; color: var(--text-muted); font-size: 0.85rem;">
             {st.session_state.sim_count:,} iterations processed
         </span>
     </div>
-    """, unsafe_allow_html=True)
+    """)
 
-    # Determine which groups to show
-    if selected_view == "ALL GROUPS":
-        groups_to_show = list(WC2026_GROUPS.keys())
-    else:
-        groups_to_show = [selected_view.replace("GROUP ", "")]
+    # ── Tabs Navigation ───────────────────────────────────────────────────
+    tab_standings, tab_leaderboard, tab_bracket = st.tabs([
+        "📊 GROUP STANDINGS",
+        "🏆 TOURNAMENT PROGRESSION",
+        "🌳 BRACKET SIMULATOR"
+    ])
 
-    # ── Group Cards ───────────────────────────────────────────────────────
-    cols = st.columns(2)
-    for idx, group_name in enumerate(groups_to_show):
-        group_df = results[results["group"] == group_name].sort_values("advance_pct", ascending=False)
+    # ── Tab 1: Group Standings ────────────────────────────────────────────
+    with tab_standings:
+        standings_png_bytes = get_cached_group_standings_png(results, selected_view)
+        col_dummy, col_btn = st.columns([3, 1])
+        with col_btn:
+            st.download_button(
+                label="EXPORT STANDINGS PNG",
+                data=standings_png_bytes,
+                file_name="group_standings.png",
+                mime="image/png",
+                width='stretch',
+                key="download_standings_btn"
+            )
 
-        with cols[idx % 2]:
-            # Group header with team flags
-            header_flags = ""
-            for _, row in group_df.iterrows():
-                flag = get_flag_url(row["team"])
-                header_flags += f'<img src="{flag}" style="width: 24px; border-radius: 3px;" />'
+        # Determine which groups to show
+        if selected_view == "ALL GROUPS":
+            groups_to_show = list(WC2026_GROUPS.keys())
+        else:
+            groups_to_show = [selected_view.replace("GROUP ", "")]
 
-            st.markdown(f"""
-            <div class="group-card">
-                <div class="group-card-header">
-                    <span class="group-letter">{group_name}</span>
-                    <span class="group-label">Group</span>
-                    <div style="margin-left: auto; display: flex; gap: 0.4rem;">
-                        {header_flags}
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
+        for idx in range(0, len(groups_to_show), 2):
+            row_groups = groups_to_show[idx:idx+2]
+            cols = st.columns(2)
+            for col_idx, group_name in enumerate(row_groups):
+                group_df = results[results["group"] == group_name].sort_values("advance_pct", ascending=False)
+                with cols[col_idx]:
+                    # Group header with team flags
+                    header_flags = ""
+                    for _, row in group_df.iterrows():
+                        flag = get_flag_url(row["team"])
+                        header_flags += f'<img src="{flag}" style="width: 24px; border-radius: 3px;" crossorigin="anonymous" />'
 
-            # Team rows with advancement badges
-            for rank, (_, row) in enumerate(group_df.iterrows(), 1):
-                flag = get_flag_url(row["team"])
-                badge_class = get_badge_class(row["advance_pct"])
-                bar_color = get_progress_color(row["advance_pct"])
-
-                st.markdown(f"""
-                <div class="sim-team-row">
-                    <span class="sim-team-rank">{rank}</span>
-                    <img class="sim-team-flag" src="{flag}" alt="{row['team']}" />
-                    <span class="sim-team-name">{row['team']}</span>
-                    <span class="sim-team-elo">{row['elo']:.0f}</span>
-                    <div style="flex: 1;">
-                        <div class="mini-progress">
-                            <div class="mini-progress-fill" style="width: {row['advance_pct']}%; background: {bar_color};"></div>
+                    # Build the entire group card HTML
+                    group_card_html = f"""
+                    <div class="group-card">
+                        <div class="group-card-header">
+                            <span class="group-letter">{group_name}</span>
+                            <span class="group-label">Group</span>
+                            <div style="margin-left: auto; display: flex; gap: 0.4rem;">
+                                {header_flags}
+                            </div>
                         </div>
-                    </div>
-                    <span class="advance-badge {badge_class}">{row['advance_pct']:.1f}%</span>
+                    """
+
+                    # Team rows with advancement badges
+                    for rank, (_, row) in enumerate(group_df.iterrows(), 1):
+                        flag = get_flag_url(row["team"])
+                        badge_class = get_badge_class(row["advance_pct"])
+                        bar_color = get_progress_color(row["advance_pct"])
+
+                        group_card_html += f"""
+                        <div class="sim-team-row">
+                            <span class="sim-team-rank">{rank}</span>
+                            <img class="sim-team-flag" src="{flag}" alt="{row['team']}" crossorigin="anonymous" />
+                            <span class="sim-team-name">{row['team']}</span>
+                            <span class="sim-team-elo">{row['elo']:.0f}</span>
+                            <div style="flex: 1;">
+                                <div class="mini-progress">
+                                    <div class="mini-progress-fill" style="width: {row['advance_pct']}%; background: {bar_color};"></div>
+                                </div>
+                            </div>
+                            <span class="advance-badge {badge_class}">{row['advance_pct']:.1f}%</span>
+                        </div>
+                        """
+
+                    group_card_html += "</div>"
+                    st.html(group_card_html)
+
+                    # Position distribution chart
+                    chart = build_group_chart(group_df, group_name)
+                    st.plotly_chart(chart, width='stretch', key=f"chart_{group_name}")
+
+    # ── Tab 2: Tournament Leaderboard ─────────────────────────────────────
+    with tab_leaderboard:
+        progression_png_bytes = get_cached_progression_png(results)
+
+        col_lbl, col_btn = st.columns([3, 1])
+        with col_lbl:
+            st.markdown(
+                """
+                <div style="font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 700;
+                            letter-spacing: 0.1em; color: var(--text-muted); text-transform: uppercase; margin-top: 0.6rem;">
+                    Tournament-Wide Knockout Progression Leaderboard
                 </div>
-                """, unsafe_allow_html=True)
+                """,
+                unsafe_allow_html=True
+            )
+        with col_btn:
+            st.download_button(
+                label="EXPORT LEADERBOARD PNG",
+                data=progression_png_bytes,
+                file_name="tournament_progression.png",
+                mime="image/png",
+                width='stretch',
+                key="download_leaderboard_btn"
+            )
 
-            st.markdown("</div>", unsafe_allow_html=True)
+        # Sort by Champion %, then Final, SF, QF, R16, R32
+        leaderboard = results.sort_values(
+            ["champion_pct", "final_pct", "sf_pct", "qf_pct", "r16_pct", "r32_pct", "elo"],
+            ascending=False
+        ).reset_index(drop=True)
 
-            # Position distribution chart
-            chart = build_group_chart(group_df, group_name)
-            st.plotly_chart(chart, use_container_width=True, key=f"chart_{group_name}")
-
-    # ── Tournament Leaderboard ────────────────────────────────────────────
-    if selected_view == "ALL GROUPS":
-        st.markdown("---")
-        st.markdown("""
-        <div style="font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 700;
-                    letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase;">
-            Tournament-Wide Advancement Leaderboard
-        </div>
-        """, unsafe_allow_html=True)
-
-        leaderboard = results.sort_values("advance_pct", ascending=False).reset_index(drop=True)
-
-        # Build the leaderboard as HTML table
         rows_html = ""
         for rank, (_, row) in enumerate(leaderboard.iterrows(), 1):
             flag = get_flag_url(row["team"])
-            badge_class = get_badge_class(row["advance_pct"])
-            bar_color = get_progress_color(row["advance_pct"])
 
             rows_html += f"""
             <tr>
                 <td><span class="lb-rank">{rank}</span></td>
                 <td>
                     <div class="lb-team">
-                        <img class="lb-flag" src="{flag}" />
+                        <img class="lb-flag" src="{flag}" crossorigin="anonymous" />
                         <span class="lb-name">{row['team']}</span>
                     </div>
                 </td>
                 <td><span class="lb-group">{row['group']}</span></td>
                 <td><span class="lb-stat">{row['elo']:.0f}</span></td>
+                <td><span class="advance-badge {get_badge_class(row['r32_pct'])}">{row['r32_pct']:.1f}%</span></td>
+                <td><span class="advance-badge {get_badge_class(row['r16_pct'])}">{row['r16_pct']:.1f}%</span></td>
+                <td><span class="advance-badge {get_badge_class(row['qf_pct'])}">{row['qf_pct']:.1f}%</span></td>
+                <td><span class="advance-badge {get_badge_class(row['sf_pct'])}">{row['sf_pct']:.1f}%</span></td>
+                <td><span class="advance-badge {get_badge_class(row['final_pct'])}">{row['final_pct']:.1f}%</span></td>
                 <td>
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <div class="mini-progress" style="width: 80px;">
-                            <div class="mini-progress-fill" style="width: {row['advance_pct']}%; background: {bar_color};"></div>
+                        <div class="mini-progress" style="width: 60px;">
+                            <div class="mini-progress-fill" style="width: {row['champion_pct']}%; background: #10b981;"></div>
                         </div>
-                        <span class="advance-badge {badge_class}">{row['advance_pct']:.1f}%</span>
+                        <span class="advance-badge badge-high" style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #10b981;">{row['champion_pct']:.1f}%</span>
                     </div>
                 </td>
-                <td><span class="lb-stat">{row['1st']:.1f}%</span></td>
-                <td><span class="lb-stat">{row['avg_pts']:.1f}</span></td>
-                <td><span class="lb-stat">{row['avg_gd']:+.1f}</span></td>
             </tr>
             """
 
-        st.markdown(f"""
+        st.html(f"""
         <div class="group-card" style="overflow-x: auto;">
             <table class="leaderboard-table">
                 <thead>
@@ -600,10 +808,12 @@ def main():
                         <th>Team</th>
                         <th>Group</th>
                         <th>Elo</th>
-                        <th>Advance %</th>
-                        <th>Win Group</th>
-                        <th>Avg Pts</th>
-                        <th>Avg GD</th>
+                        <th>Reach R32</th>
+                        <th>Reach R16</th>
+                        <th>Reach QF</th>
+                        <th>Reach SF</th>
+                        <th>Reach Final</th>
+                        <th>Champion %</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -611,7 +821,99 @@ def main():
                 </tbody>
             </table>
         </div>
-        """, unsafe_allow_html=True)
+        """)
+
+    # ── Tab 3: Bracket Tree Simulator ─────────────────────────────────────
+    with tab_bracket:
+        st.html("""
+        <div style="font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 700;
+                    letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase;">
+            Live Tournament Bracket Simulator
+        </div>
+        """)
+
+        if "sample_bracket" not in st.session_state:
+            from src.group_simulator import simulate_single_tournament
+            rng = np.random.default_rng(None)
+            st.session_state.sample_bracket = simulate_single_tournament(elo_ratings, rng)
+
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            sim_single_btn = st.button("SIMULATE SINGLE RUN", key="sim_single_run_btn", width='stretch')
+            if sim_single_btn:
+                from src.group_simulator import simulate_single_tournament
+                rng = np.random.default_rng(None)
+                st.session_state.sample_bracket = simulate_single_tournament(elo_ratings, rng)
+                st.rerun()
+
+        bracket_data = st.session_state.sample_bracket
+
+        with col2:
+            bracket_png_bytes = get_cached_bracket_png(bracket_data)
+            st.download_button(
+                label="EXPORT BRACKET PNG",
+                data=bracket_png_bytes,
+                file_name="tournament_bracket.png",
+                mime="image/png",
+                width='stretch',
+                key="download_bracket_btn"
+            )
+
+        bracket_data = st.session_state.sample_bracket
+
+        # Build column HTMLs
+        # Column 1: Round of 32
+        r32_html = '<div class="bracket-column">'
+        for idx, m in enumerate(bracket_data["knockouts"]["r32"], 1):
+            r32_html += render_match_html(m, f"R32 Match {idx}")
+        r32_html += '</div>'
+
+        # Column 2: Round of 16
+        r16_html = '<div class="bracket-column">'
+        for idx, m in enumerate(bracket_data["knockouts"]["r16"], 1):
+            r16_html += render_match_html(m, f"R16 Match {idx}")
+        r16_html += '</div>'
+
+        # Column 3: Quarterfinals
+        qf_html = '<div class="bracket-column">'
+        for idx, m in enumerate(bracket_data["knockouts"]["qf"], 1):
+            qf_html += render_match_html(m, f"Quarterfinal {idx}")
+        qf_html += '</div>'
+
+        # Column 4: Semifinals
+        sf_html = '<div class="bracket-column">'
+        for idx, m in enumerate(bracket_data["knockouts"]["sf"], 1):
+            sf_html += render_match_html(m, f"Semifinal {idx}")
+        sf_html += '</div>'
+
+        # Column 5: Final & Champion
+        final_m = bracket_data["knockouts"]["final"]
+        final_html = '<div class="bracket-column">'
+        final_html += render_match_html(final_m, "World Cup Final")
+
+        champ = final_m["winner"]
+        champ_flag = get_flag_url(champ)
+
+        final_html += f"""
+        <div class="champion-box">
+            <div class="champion-title">🏆 CHAMPION 🏆</div>
+            <img class="champion-flag" src="{champ_flag}" crossorigin="anonymous" />
+            <div class="champion-name">{champ}</div>
+        </div>
+        """
+        final_html += '</div>'
+
+        # Combine all columns into wrapper
+        full_bracket_html = f"""
+        <div class="bracket-wrapper">
+            {r32_html}
+            {r16_html}
+            {qf_html}
+            {sf_html}
+            {final_html}
+        </div>
+        """
+        st.html(full_bracket_html)
 
 
 main()

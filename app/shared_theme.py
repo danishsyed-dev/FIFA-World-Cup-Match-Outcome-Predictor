@@ -95,7 +95,7 @@ div[data-testid="stExpander"] details summary p {
 }
 
 /* Custom button overrides */
-div.stButton > button {
+div.stButton > button, div.stDownloadButton > button {
     background: var(--btn-bg) !important;
     color: var(--draw-color) !important;
     border: 1px solid var(--card-border) !important;
@@ -106,7 +106,7 @@ div.stButton > button {
     transition: all 0.2s ease !important;
     height: 2.5rem;
 }
-div.stButton > button:hover {
+div.stButton > button:hover, div.stDownloadButton > button:hover {
     background: var(--btn-hover) !important;
     border-color: #10b981 !important;
     color: #10b981 !important;

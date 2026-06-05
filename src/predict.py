@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import joblib
 
-from src.data_loader import load_all
+from src.data_loader import load_all, load_elo, DATA_DIR
 from src.elo_calculator import EloSystem
 from src.feature_engineering import (
     _recent_stats,
@@ -59,6 +59,21 @@ class Predictor:
         print("[predict] Rebuilding Elo ratings...")
         self.elo_system = EloSystem()
         self.df = self.elo_system.calculate(raw)
+
+        # Override with latest ratings from elo.csv if present
+        elo_path = DATA_DIR / "elo.csv"
+        if elo_path.exists():
+            try:
+                elo_df = load_elo()
+                # Find the latest rating for each team
+                latest_ratings = elo_df.sort_values("date").groupby("team").last().reset_index()
+                for _, row in latest_ratings.iterrows():
+                    team_name = str(row["team"]).strip()
+                    self.elo_system.ratings[team_name] = float(row["elo"])
+                print(f"[predict] Overrode active Elo ratings with latest values from elo.csv (e.g. Portugal: {self.elo_system.get_rating('Portugal'):.0f}).")
+            except Exception as e:
+                print(f"[predict] Error overriding Elo ratings from elo.csv: {e}")
+
         print(f"[predict] Ready. {len(self.df):,} historical matches loaded.")
 
     # ------------------------------------------------------------------
