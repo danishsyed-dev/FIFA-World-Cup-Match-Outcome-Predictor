@@ -119,6 +119,7 @@ class Predictor:
         away_team: str,
         neutral: bool = False,
         tournament: str = "Friendly",
+        draw_threshold: float = 0.25,
     ) -> dict:
         """
         Predict the outcome of home_team vs away_team.
@@ -142,7 +143,15 @@ class Predictor:
         draw_prob     = prob_map.get(1, 0.0)
         home_win_prob = prob_map.get(2, 0.0)
 
+        # Standard argmax prediction
         best_class = int(classes[np.argmax(probs)])
+        
+        # Apply custom draw threshold to make draws more realistic
+        if draw_threshold > 0:
+            max_win_prob = max(home_win_prob, away_win_prob)
+            if (max_win_prob - draw_prob) < draw_threshold:
+                best_class = 1  # Draw
+
         confidence = float(np.max(probs))
 
         return {
@@ -157,7 +166,7 @@ class Predictor:
             "away_elo": self.elo_system.get_rating(away_team),
         }
 
-    def predict_batch(self, fixtures: pd.DataFrame) -> pd.DataFrame:
+    def predict_batch(self, fixtures: pd.DataFrame, draw_threshold: float = 0.25) -> pd.DataFrame:
         """
         Batch prediction from a DataFrame with columns:
             home_team, away_team, neutral (bool), tournament (str)
@@ -169,6 +178,7 @@ class Predictor:
                 row["away_team"],
                 neutral=bool(row.get("neutral", False)),
                 tournament=str(row.get("tournament", "Friendly")),
+                draw_threshold=draw_threshold,
             )
             rows.append(r)
         return pd.DataFrame(rows)

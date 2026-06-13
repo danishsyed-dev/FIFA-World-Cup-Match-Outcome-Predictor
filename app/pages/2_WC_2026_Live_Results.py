@@ -350,6 +350,13 @@ def main():
         # Search by team
         search_team = st.text_input("SEARCH TEAM", "").strip()
 
+        # Reload Predictions
+        st.markdown("---")
+        if st.button("RELOAD PREDICTIONS", width='stretch'):
+            if "wc_predictions_df" in st.session_state:
+                del st.session_state.wc_predictions_df
+            st.rerun()
+
     # Apply filters
     filtered_df = df_preds.copy()
     
