@@ -238,6 +238,9 @@ st.markdown("""
 @st.cache_resource(show_spinner="Running predictive engine and calculating Elo ratings...")
 def load_predictor():
     try:
+        import importlib
+        import src.predict
+        importlib.reload(src.predict)
         from src.predict import Predictor
         return Predictor()
     except Exception as e:
@@ -299,7 +302,13 @@ def main():
                 home_score = row['home_score']
                 away_score = row['away_score']
 
-                pred = predictor.predict(home, away, neutral=neutral, tournament="FIFA World Cup")
+                pred = predictor.predict(
+                    home, 
+                    away, 
+                    neutral=neutral, 
+                    tournament="FIFA World Cup",
+                    match_date=date
+                )
                 
                 pred_rows.append({
                     "date": date,

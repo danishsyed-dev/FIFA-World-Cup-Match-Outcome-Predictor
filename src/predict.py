@@ -86,16 +86,32 @@ class Predictor:
         away_team: str,
         neutral: bool = False,
         tournament: str = "Friendly",
+        match_date: str = None,
     ) -> np.ndarray:
         """Build a single feature vector for the requested fixture."""
-        today = pd.Timestamp.now()
+        ref_date = pd.to_datetime(match_date) if match_date else pd.Timestamp.now()
 
-        home_elo = self.elo_system.get_rating(home_team)
-        away_elo = self.elo_system.get_rating(away_team)
+        # Find pre-match Elo from df if match was already played and exists in self.df
+        historical_match = pd.DataFrame()
+        if match_date and not self.df.empty:
+            mask = (
+                (self.df["home_team"] == home_team) & 
+                (self.df["away_team"] == away_team) & 
+                (self.df["date"] == ref_date)
+            )
+            historical_match = self.df[mask]
 
-        hf, hgs, hgc = _recent_stats(self.df, home_team, today)
-        af, ags, agc = _recent_stats(self.df, away_team, today)
-        hw, draws = _h2h_stats(self.df, home_team, away_team, today)
+        if not historical_match.empty:
+            home_elo = historical_match.iloc[0]["home_elo"]
+            away_elo = historical_match.iloc[0]["away_elo"]
+        else:
+            home_elo = self.elo_system.get_rating(home_team)
+            away_elo = self.elo_system.get_rating(away_team)
+
+        # Compute stats strictly before match_date
+        hf, hgs, hgc = _recent_stats(self.df, home_team, ref_date)
+        af, ags, agc = _recent_stats(self.df, away_team, ref_date)
+        hw, draws = _h2h_stats(self.df, home_team, away_team, ref_date)
         t_weight = _encode_tournament(tournament)
 
         feature_vector = [
@@ -121,6 +137,7 @@ class Predictor:
         tournament: str = "Friendly",
         draw_threshold: float = 0.25,
         max_win_threshold: float = 0.45,
+        match_date: str = None,
     ) -> dict:
         """
         Predict the outcome of home_team vs away_team.
@@ -133,7 +150,9 @@ class Predictor:
             predicted_outcome, confidence,
             home_elo, away_elo
         """
-        X = self._build_feature_vector(home_team, away_team, neutral, tournament)
+        X = self._build_feature_vector(
+            home_team, away_team, neutral, tournament, match_date=match_date
+        )
         probs = self.model.predict_proba(X)[0]  # [away_win, draw, home_win]
 
         # Map to class indices used at training time
@@ -155,6 +174,25 @@ class Predictor:
 
         confidence = float(np.max(probs))
 
+        # Retrieve Elo values computed/used
+        if match_date and not self.df.empty:
+            ref_date = pd.to_datetime(match_date)
+            mask = (
+                (self.df["home_team"] == home_team) & 
+                (self.df["away_team"] == away_team) & 
+                (self.df["date"] == ref_date)
+            )
+            historical_match = self.df[mask]
+            if not historical_match.empty:
+                h_elo = float(historical_match.iloc[0]["home_elo"])
+                a_elo = float(historical_match.iloc[0]["away_elo"])
+            else:
+                h_elo = self.elo_system.get_rating(home_team)
+                a_elo = self.elo_system.get_rating(away_team)
+        else:
+            h_elo = self.elo_system.get_rating(home_team)
+            a_elo = self.elo_system.get_rating(away_team)
+
         return {
             "home_team": home_team,
             "away_team": away_team,
@@ -163,8 +201,8 @@ class Predictor:
             "away_win_prob": away_win_prob,
             "predicted_outcome": LABEL_MAP[best_class],
             "confidence": confidence,
-            "home_elo": self.elo_system.get_rating(home_team),
-            "away_elo": self.elo_system.get_rating(away_team),
+            "home_elo": h_elo,
+            "away_elo": a_elo,
         }
 
     def predict_batch(
@@ -186,6 +224,7 @@ class Predictor:
                 tournament=str(row.get("tournament", "Friendly")),
                 draw_threshold=draw_threshold,
                 max_win_threshold=max_win_threshold,
+                match_date=row["date"] if ("date" in row and not pd.isna(row["date"])) else None,
             )
             rows.append(r)
         return pd.DataFrame(rows)

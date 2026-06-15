@@ -366,6 +366,9 @@ st.markdown(
 def load_predictor():
     """Cache the Predictor object so it is only loaded once."""
     try:
+        import importlib
+        import src.predict
+        importlib.reload(src.predict)
         from src.predict import Predictor
         return Predictor()
     except FileNotFoundError as e:
