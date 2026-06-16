@@ -13,10 +13,6 @@ from pathlib import Path
 # Add project root to python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import importlib
-import src.image_generator
-importlib.reload(src.image_generator)
-
 from src.data_loader import load_all, load_elo, DATA_DIR
 from src.image_generator import generate_matchup_png
 

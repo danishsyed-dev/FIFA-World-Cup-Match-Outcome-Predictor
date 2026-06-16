@@ -16,11 +16,8 @@ from pathlib import Path
 # Add project root to python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-import importlib
 import src.image_generator
-importlib.reload(src.image_generator)
 import src.group_simulator
-importlib.reload(src.group_simulator)
 
 import streamlit as st
 import pandas as pd
@@ -530,25 +527,29 @@ def compute_actual_standings(teams: List[str], elo_ratings: Dict[str, float], pl
     return standings
 
 
-@st.cache_resource(show_spinner="Loading analytical engine and computing Elo ratings…")
 def load_elo_ratings():
-    """Load the EloSystem from historical data. Falls back to hardcoded ratings."""
+    """Extract Elo ratings from the shared cached Predictor. Falls back to hardcoded."""
     try:
-        from src.predict import Predictor
-        predictor = Predictor()
-        # Extract current Elo for all WC teams
+        # Import the same cached function from the main app so Predictor is only ever
+        # initialized once across all pages in the session.
+        import app.streamlit_app as _main_app
+        predictor = _main_app.load_predictor()
+    except Exception:
+        predictor = None
+
+    if predictor is None or isinstance(predictor, str):
+        return FALLBACK_ELO.copy()
+    try:
         all_wc_teams = [t for teams in WC2026_GROUPS.values() for t in teams]
         elo_dict = {}
         for team in all_wc_teams:
             rating = predictor.elo_system.get_rating(team)
-            # If team has no historical data, use fallback
             if rating == predictor.elo_system.initial_rating and team in FALLBACK_ELO:
                 elo_dict[team] = FALLBACK_ELO[team]
             else:
                 elo_dict[team] = rating
         return elo_dict
     except Exception:
-        # Fallback to hardcoded Elo ratings
         return FALLBACK_ELO.copy()
 
 
