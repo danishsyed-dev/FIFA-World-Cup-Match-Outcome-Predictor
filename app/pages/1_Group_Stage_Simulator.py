@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import importlib
 import src.image_generator
 importlib.reload(src.image_generator)
+import src.group_simulator
+importlib.reload(src.group_simulator)
 
 import streamlit as st
 import pandas as pd
@@ -389,6 +391,73 @@ st.markdown("""
     font-weight: 800;
     color: #10b981;
 }
+
+/* ── Standings Table ── */
+.standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+}
+.standings-table th {
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    padding: 0.35rem 0.25rem;
+    border-bottom: 2px solid var(--card-border);
+    text-align: center;
+}
+.standings-table th.team-col {
+    text-align: left;
+}
+.standings-table td {
+    padding: 0.45rem 0.25rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--background-color), var(--text-color) 6%);
+    font-size: 0.85rem;
+    text-align: center;
+    vertical-align: middle;
+}
+.standings-table td.team-col {
+    text-align: left;
+}
+.standings-pos {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+.standings-team-name {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    color: var(--title-color);
+}
+.standings-elo {
+    font-family: 'Space Grotesk', sans-serif;
+    color: #10b981;
+    font-weight: 600;
+}
+.standings-val {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    color: var(--title-color);
+}
+.standings-pts {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    color: #10b981;
+}
+.group-played-matches {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--card-border);
+}
+.group-played-matches strong {
+    color: var(--title-color);
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -397,7 +466,68 @@ st.markdown("""
 # Simulator Logic
 # ══════════════════════════════════════════════════════════════════════════════
 
-from src.group_simulator import WC2026_GROUPS, FALLBACK_ELO, simulate_all_groups
+from typing import List, Dict
+from itertools import combinations
+from src.group_simulator import WC2026_GROUPS, FALLBACK_ELO, simulate_all_groups, load_real_played_matches
+
+def compute_actual_standings(teams: List[str], elo_ratings: Dict[str, float], played_matches: dict) -> List[dict]:
+    """Calculate actual group standings based on played matches from results.csv."""
+    records = {t: {"pts": 0, "pld": 0, "w": 0, "d": 0, "l": 0, "gf": 0, "ga": 0, "gd": 0} for t in teams}
+    for team_a, team_b in combinations(teams, 2):
+        if played_matches and (team_a, team_b) in played_matches:
+            goals_a, goals_b = played_matches[(team_a, team_b)]
+            records[team_a]["pld"] += 1
+            records[team_b]["pld"] += 1
+            records[team_a]["gf"] += goals_a
+            records[team_a]["ga"] += goals_b
+            records[team_b]["gf"] += goals_b
+            records[team_b]["ga"] += goals_a
+            
+            if goals_a > goals_b:
+                records[team_a]["pts"] += 3
+                records[team_a]["w"] += 1
+                records[team_b]["l"] += 1
+            elif goals_a == goals_b:
+                records[team_a]["pts"] += 1
+                records[team_b]["pts"] += 1
+                records[team_a]["w"] += 0
+                records[team_a]["d"] += 1
+                records[team_b]["d"] += 1
+            else:
+                records[team_b]["pts"] += 3
+                records[team_b]["w"] += 1
+                records[team_a]["l"] += 1
+                
+    for t in teams:
+        records[t]["gd"] = records[t]["gf"] - records[t]["ga"]
+        
+    sorted_teams = sorted(
+        teams,
+        key=lambda t: (
+            records[t]["pts"],
+            records[t]["gd"],
+            records[t]["gf"],
+            elo_ratings.get(t, FALLBACK_ELO.get(t, 1500))
+        ),
+        reverse=True
+    )
+    
+    standings = []
+    for pos, t in enumerate(sorted_teams, 1):
+        standings.append({
+            "pos": pos,
+            "team": t,
+            "elo": elo_ratings.get(t, FALLBACK_ELO.get(t, 1500)),
+            "pld": records[t]["pld"],
+            "w": records[t]["w"],
+            "d": records[t]["d"],
+            "l": records[t]["l"],
+            "gf": records[t]["gf"],
+            "ga": records[t]["ga"],
+            "gd": records[t]["gd"],
+            "pts": records[t]["pts"],
+        })
+    return standings
 
 
 @st.cache_resource(show_spinner="Loading analytical engine and computing Elo ratings…")
@@ -546,6 +676,23 @@ def main():
     </div>
     """)
 
+    # ── Live Integration Telemetry ────────────────────────────────────────
+    played_matches = load_real_played_matches()
+    num_played = len(played_matches) // 2
+    
+    st.html(f"""
+    <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.2); 
+                border-radius: 8px; padding: 0.75rem 1.25rem; margin-bottom: 1.5rem; display: flex; 
+                align-items: center; gap: 0.75rem;">
+        <span style="font-size: 1.25rem;">📊</span>
+        <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; color: var(--text-color); line-height: 1.4;">
+            <strong>Live Standings Integration Active:</strong> The simulation engine has loaded <strong>{num_played} played matches</strong> 
+            from the official tournament database (`results.csv`). The standings below are pre-populated with these real results, 
+            and the Monte Carlo engine only predicts remaining unplayed fixtures.
+        </div>
+    </div>
+    """)
+
     # ── Load Elo Ratings ──────────────────────────────────────────────────
     elo_ratings = load_elo_ratings()
 
@@ -613,7 +760,7 @@ def main():
         st.html("""
         <div style="font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 700;
                     letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 1rem; text-transform: uppercase;">
-            Tournament Groups — Pre-Simulation Overview
+            Tournament Groups — Current Live Standings
         </div>
         """)
 
@@ -624,15 +771,48 @@ def main():
             for col_idx, group_name in enumerate(row_groups):
                 with cols[col_idx]:
                     teams = WC2026_GROUPS[group_name]
-                    flags_html = ""
-                    for t in teams:
-                        flag = get_flag_url(t)
-                        elo = elo_ratings.get(t, FALLBACK_ELO.get(t, 1500))
-                        flags_html += f"""
-                        <div class="sim-team-row">
-                            <img class="sim-team-flag" src="{flag}" alt="{t}" crossorigin="anonymous" />
-                            <span class="sim-team-name">{t}</span>
-                            <span class="sim-team-elo">{elo:.0f}</span>
+                    standings = compute_actual_standings(teams, elo_ratings, played_matches)
+                    
+                    rows_html = ""
+                    for s in standings:
+                        flag = get_flag_url(s["team"])
+                        gd_val = s["gd"]
+                        gd_str = f"+{gd_val}" if gd_val > 0 else str(gd_val)
+                        rows_html += f"""
+                        <tr>
+                            <td class="standings-pos">{s["pos"]}</td>
+                            <td class="team-col">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <img src="{flag}" style="width: 22px; height: auto; border-radius: 2px;" crossorigin="anonymous" />
+                                    <span class="standings-team-name">{s["team"]}</span>
+                                </div>
+                            </td>
+                            <td class="standings-elo">{s["elo"]:.0f}</td>
+                            <td class="standings-val">{s["pld"]}</td>
+                            <td class="standings-val">{gd_str}</td>
+                            <td class="standings-pts">{s["pts"]}</td>
+                        </tr>
+                        """
+                        
+                    # Find played matches in this group
+                    group_played = []
+                    for t_a, t_b in combinations(teams, 2):
+                        if (t_a, t_b) in played_matches:
+                            goals_a, goals_b = played_matches[(t_a, t_b)]
+                            group_played.append(f"{t_a} {goals_a}–{goals_b} {t_b}")
+                    
+                    played_html = ""
+                    if group_played:
+                        played_str = ", ".join(group_played)
+                        played_html = f"""
+                        <div class="group-played-matches">
+                            <strong>Played:</strong> {played_str}
+                        </div>
+                        """
+                    else:
+                        played_html = f"""
+                        <div class="group-played-matches">
+                            <em>No matches played yet</em>
                         </div>
                         """
 
@@ -642,7 +822,22 @@ def main():
                             <span class="group-letter">{group_name}</span>
                             <span class="group-label">Group</span>
                         </div>
-                        {flags_html}
+                        <table class="standings-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th class="team-col">Team</th>
+                                    <th>Elo</th>
+                                    <th>Pld</th>
+                                    <th>GD</th>
+                                    <th>Pts</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rows_html}
+                            </tbody>
+                        </table>
+                        {played_html}
                     </div>
                     """)
 
@@ -689,15 +884,82 @@ def main():
             row_groups = groups_to_show[idx:idx+2]
             cols = st.columns(2)
             for col_idx, group_name in enumerate(row_groups):
-                group_df = results[results["group"] == group_name].sort_values("advance_pct", ascending=False)
+                # Sort by simulated avg_pts desc, then avg_gd desc, then elo desc
+                group_df = results[results["group"] == group_name].sort_values(
+                    ["avg_pts", "avg_gd", "elo"], ascending=[False, False, False]
+                )
                 with cols[col_idx]:
+                    teams = WC2026_GROUPS[group_name]
+                    actual_standings = compute_actual_standings(teams, elo_ratings, played_matches)
+                    actual_map = {s["team"]: s for s in actual_standings}
+
                     # Group header with team flags
                     header_flags = ""
                     for _, row in group_df.iterrows():
                         flag = get_flag_url(row["team"])
                         header_flags += f'<img src="{flag}" style="width: 24px; border-radius: 3px;" crossorigin="anonymous" />'
 
-                    # Build the entire group card HTML
+                    # Build the table rows
+                    rows_html = ""
+                    for proj_pos, (_, row) in enumerate(group_df.iterrows(), 1):
+                        t_name = row["team"]
+                        flag = get_flag_url(t_name)
+                        actual_pld = actual_map[t_name]["pld"]
+                        actual_pts = actual_map[t_name]["pts"]
+                        avg_pts = row["avg_pts"]
+                        avg_gd = row["avg_gd"]
+                        avg_gd_str = f"+{avg_gd:.1f}" if avg_gd > 0 else f"{avg_gd:.1f}"
+                        advance_pct = row["advance_pct"]
+                        badge_class = get_badge_class(advance_pct)
+                        bar_color = get_progress_color(advance_pct)
+                        
+                        rows_html += f"""
+                        <tr>
+                            <td class="standings-pos">{proj_pos}</td>
+                            <td class="team-col">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <img src="{flag}" style="width: 22px; height: auto; border-radius: 2px;" crossorigin="anonymous" />
+                                    <span class="standings-team-name">{t_name}</span>
+                                </div>
+                            </td>
+                            <td class="standings-elo">{row["elo"]:.0f}</td>
+                            <td class="standings-val">{actual_pld}</td>
+                            <td class="standings-val" style="font-weight: 600;">{actual_pts}</td>
+                            <td class="standings-val" style="color: #10b981; font-weight: 600;">{avg_pts:.1f}</td>
+                            <td class="standings-val">{avg_gd_str}</td>
+                            <td>
+                                <div style="display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end;">
+                                    <div class="mini-progress" style="width: 40px; margin-top: 0;">
+                                        <div class="mini-progress-fill" style="width: {advance_pct}%; background: {bar_color};"></div>
+                                    </div>
+                                    <span class="advance-badge {badge_class}" style="min-width: 65px; padding: 0.15rem 0.4rem; font-size: 0.8rem; margin-top: 0;">{advance_pct:.1f}%</span>
+                                </div>
+                            </td>
+                        </tr>
+                        """
+                        
+                    # Find played matches in this group
+                    group_played = []
+                    for t_a, t_b in combinations(teams, 2):
+                        if (t_a, t_b) in played_matches:
+                            goals_a, goals_b = played_matches[(t_a, t_b)]
+                            group_played.append(f"{t_a} {goals_a}–{goals_b} {t_b}")
+                    
+                    played_html = ""
+                    if group_played:
+                        played_str = ", ".join(group_played)
+                        played_html = f"""
+                        <div class="group-played-matches">
+                            <strong>Played:</strong> {played_str}
+                        </div>
+                        """
+                    else:
+                        played_html = f"""
+                        <div class="group-played-matches">
+                            <em>No matches played yet</em>
+                        </div>
+                        """
+                        
                     group_card_html = f"""
                     <div class="group-card">
                         <div class="group-card-header">
@@ -707,30 +969,26 @@ def main():
                                 {header_flags}
                             </div>
                         </div>
+                        <table class="standings-table">
+                            <thead>
+                                <tr>
+                                    <th>Proj</th>
+                                    <th class="team-col">Team</th>
+                                    <th>Elo</th>
+                                    <th>Pld</th>
+                                    <th>Pts</th>
+                                    <th>Avg Pts</th>
+                                    <th>Avg GD</th>
+                                    <th style="text-align: right; padding-right: 1.5rem;">Advance %</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rows_html}
+                            </tbody>
+                        </table>
+                        {played_html}
+                    </div>
                     """
-
-                    # Team rows with advancement badges
-                    for rank, (_, row) in enumerate(group_df.iterrows(), 1):
-                        flag = get_flag_url(row["team"])
-                        badge_class = get_badge_class(row["advance_pct"])
-                        bar_color = get_progress_color(row["advance_pct"])
-
-                        group_card_html += f"""
-                        <div class="sim-team-row">
-                            <span class="sim-team-rank">{rank}</span>
-                            <img class="sim-team-flag" src="{flag}" alt="{row['team']}" crossorigin="anonymous" />
-                            <span class="sim-team-name">{row['team']}</span>
-                            <span class="sim-team-elo">{row['elo']:.0f}</span>
-                            <div style="flex: 1;">
-                                <div class="mini-progress">
-                                    <div class="mini-progress-fill" style="width: {row['advance_pct']}%; background: {bar_color};"></div>
-                                </div>
-                            </div>
-                            <span class="advance-badge {badge_class}">{row['advance_pct']:.1f}%</span>
-                        </div>
-                        """
-
-                    group_card_html += "</div>"
                     st.html(group_card_html)
 
                     # Position distribution chart

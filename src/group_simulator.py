@@ -103,6 +103,67 @@ def simulate_match_score(elo_a: float, elo_b: float, rng: np.random.Generator) -
     return (int(goals_a), int(goals_b))
 
 
+def load_real_played_matches() -> Dict[Tuple[str, str], Tuple[int, int]]:
+    """
+    Load all played FIFA World Cup 2026 matches from results.csv.
+    Returns a dictionary mapping (team_a, team_b) -> (goals_a, goals_b).
+    """
+    from pathlib import Path
+    
+    # Try multiple paths to find results.csv
+    possible_paths = [
+        Path(__file__).resolve().parent.parent / "data" / "results.csv",
+        Path("data/results.csv"),
+        Path("../data/results.csv"),
+    ]
+    csv_path = None
+    for p in possible_paths:
+        if p.exists():
+            csv_path = p
+            break
+            
+    if not csv_path:
+        return {}
+        
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception:
+        return {}
+        
+    # Filter for played 2026 World Cup matches
+    wc_matches = df[
+        (df["tournament"] == "FIFA World Cup") & 
+        (df["date"].astype(str).str.startswith("2026")) &
+        df["home_score"].notna() &
+        df["away_score"].notna()
+    ]
+    
+    def clean_name_for_simulator(team_name: str) -> str:
+        t_clean = team_name.strip()
+        if "Cura" in t_clean:
+            return "Curacao"
+        elif t_clean == "United States":
+            return "USA"
+        elif t_clean == "Czech Republic":
+            return "Czechia"
+        return t_clean
+    
+    played = {}
+    for _, row in wc_matches.iterrows():
+        try:
+            ht = clean_name_for_simulator(str(row["home_team"]))
+            at = clean_name_for_simulator(str(row["away_team"]))
+            hs = int(row["home_score"])
+            as_ = int(row["away_score"])
+            
+            played[(ht, at)] = (hs, as_)
+            played[(at, ht)] = (as_, hs)
+        except (ValueError, TypeError):
+            continue
+            
+    return played
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Group Simulation Engine
 # ══════════════════════════════════════════════════════════════════════════════
@@ -111,6 +172,7 @@ def _simulate_group_once(
     teams: List[str],
     elo_ratings: Dict[str, float],
     rng: np.random.Generator,
+    played_matches: Dict[Tuple[str, str], Tuple[int, int]] = None,
 ) -> List[dict]:
     """
     Play all 6 round-robin matches in a 4-team group and return final standings.
@@ -126,10 +188,12 @@ def _simulate_group_once(
 
     # Play all 6 matches (round-robin of 4)
     for team_a, team_b in combinations(teams, 2):
-        elo_a = elo_ratings.get(team_a, FALLBACK_ELO.get(team_a, 1500))
-        elo_b = elo_ratings.get(team_b, FALLBACK_ELO.get(team_b, 1500))
-
-        goals_a, goals_b = simulate_match_score(elo_a, elo_b, rng)
+        if played_matches and (team_a, team_b) in played_matches:
+            goals_a, goals_b = played_matches[(team_a, team_b)]
+        else:
+            elo_a = elo_ratings.get(team_a, FALLBACK_ELO.get(team_a, 1500))
+            elo_b = elo_ratings.get(team_b, FALLBACK_ELO.get(team_b, 1500))
+            goals_a, goals_b = simulate_match_score(elo_a, elo_b, rng)
 
         records[team_a]["gf"] += goals_a
         records[team_a]["ga"] += goals_b
@@ -195,8 +259,10 @@ def simulate_group(
     # Track 3rd-place records for cross-group comparison
     third_place_records: List[dict] = []
 
+    played_matches = load_real_played_matches()
+
     for _ in range(n_sims):
-        standings = _simulate_group_once(teams, elo_ratings, rng)
+        standings = _simulate_group_once(teams, elo_ratings, rng, played_matches)
         for entry in standings:
             t = entry["team"]
             pos = entry["position"]
@@ -397,17 +463,21 @@ def allocate_third_places(third_places: List[dict]) -> Dict[str, dict]:
 def simulate_single_tournament(
     elo_ratings: Dict[str, float],
     rng: np.random.Generator,
+    played_matches: Dict[Tuple[str, str], Tuple[int, int]] = None,
 ) -> dict:
     """
     Simulates one full World Cup 2026 (Group Stage + 32-team Knockout Stage).
     Returns the furthest stage reached by each team and the full bracket results.
     """
+    if played_matches is None:
+        played_matches = load_real_played_matches()
+        
     # 1. Simulate Group Stage
     group_standings = {}
     third_placed = []
     
     for group_name, teams in WC2026_GROUPS.items():
-        standings = _simulate_group_once(teams, elo_ratings, rng)
+        standings = _simulate_group_once(teams, elo_ratings, rng, played_matches)
         group_standings[group_name] = standings
         for entry in standings:
             if entry["position"] == 3:
@@ -561,10 +631,12 @@ def simulate_full_tournament_monte_carlo(
     group_stage_stats = {t: {"top2": 0, "pts": 0, "gd": 0} for t in all_teams}
     position_counts = {t: {1: 0, 2: 0, 3: 0, 4: 0} for t in all_teams}
 
+    played_matches = load_real_played_matches()
+
     for _ in range(n_sims):
         # 1. Group Stage Standing Tracking
         for group_name, teams in WC2026_GROUPS.items():
-            standings = _simulate_group_once(teams, elo_ratings, rng)
+            standings = _simulate_group_once(teams, elo_ratings, rng, played_matches)
             for entry in standings:
                 t = entry["team"]
                 pos = entry["position"]
@@ -575,7 +647,7 @@ def simulate_full_tournament_monte_carlo(
                     group_stage_stats[t]["top2"] += 1
                     
         # 2. Knockout Progression Tracking
-        sim_res = simulate_single_tournament(elo_ratings, rng)
+        sim_res = simulate_single_tournament(elo_ratings, rng, played_matches)
         furthest = sim_res["furthest"]
         for t, stage in furthest.items():
             if stage == "Champion":
