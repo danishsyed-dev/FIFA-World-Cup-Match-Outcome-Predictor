@@ -402,15 +402,16 @@ st.markdown("""
     letter-spacing: 0.05em;
     color: var(--text-muted);
     text-transform: uppercase;
-    padding: 0.35rem 0.25rem;
+    padding: 0.4rem 0.15rem;
     border-bottom: 2px solid var(--card-border);
     text-align: center;
+    white-space: nowrap;
 }
 .standings-table th.team-col {
     text-align: left;
 }
 .standings-table td {
-    padding: 0.45rem 0.25rem;
+    padding: 0.5rem 0.15rem;
     border-bottom: 1px solid color-mix(in srgb, var(--background-color), var(--text-color) 6%);
     font-size: 0.85rem;
     text-align: center;
@@ -428,6 +429,17 @@ st.markdown("""
     font-family: 'Outfit', sans-serif;
     font-weight: 700;
     color: var(--title-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    vertical-align: middle;
+}
+.pre-sim-name {
+    max-width: 80px;
+}
+.post-sim-name {
+    max-width: 90px;
 }
 .standings-elo {
     font-family: 'Space Grotesk', sans-serif;
@@ -784,8 +796,8 @@ def main():
                             <td class="standings-pos">{s["pos"]}</td>
                             <td class="team-col">
                                 <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                    <img src="{flag}" style="width: 22px; height: auto; border-radius: 2px;" crossorigin="anonymous" />
-                                    <span class="standings-team-name">{s["team"]}</span>
+                                    <img src="{flag}" style="width: 18px; height: auto; border-radius: 2px;" crossorigin="anonymous" />
+                                    <span class="standings-team-name pre-sim-name">{s["team"]}</span>
                                 </div>
                             </td>
                             <td class="standings-elo">{s["elo"]:.0f}</td>
@@ -823,21 +835,23 @@ def main():
                             <span class="group-letter">{group_name}</span>
                             <span class="group-label">Group</span>
                         </div>
-                        <table class="standings-table">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th class="team-col">Team</th>
-                                    <th>Elo</th>
-                                    <th>Pld</th>
-                                    <th>GD</th>
-                                    <th>Pts</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {rows_html}
-                            </tbody>
-                        </table>
+                        <div style="overflow-x: auto; width: 100%;">
+                            <table class="standings-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 6%;">#</th>
+                                        <th class="team-col" style="width: 40%;">Team</th>
+                                        <th style="width: 14%;">Elo</th>
+                                        <th style="width: 13%;">Pld</th>
+                                        <th style="width: 13%;">GD</th>
+                                        <th style="width: 14%;">Pts</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rows_html}
+                                </tbody>
+                            </table>
+                        </div>
                         {played_html}
                     </div>
                     """)
@@ -919,8 +933,8 @@ def main():
                             <td class="standings-pos">{proj_pos}</td>
                             <td class="team-col">
                                 <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                    <img src="{flag}" style="width: 22px; height: auto; border-radius: 2px;" crossorigin="anonymous" />
-                                    <span class="standings-team-name">{t_name}</span>
+                                    <img src="{flag}" style="width: 18px; height: auto; border-radius: 2px;" crossorigin="anonymous" />
+                                    <span class="standings-team-name post-sim-name">{t_name}</span>
                                 </div>
                             </td>
                             <td class="standings-elo">{row["elo"]:.0f}</td>
@@ -928,12 +942,9 @@ def main():
                             <td class="standings-val" style="font-weight: 600;">{actual_pts}</td>
                             <td class="standings-val" style="color: #10b981; font-weight: 600;">{avg_pts:.1f}</td>
                             <td class="standings-val">{avg_gd_str}</td>
-                            <td>
+                            <td style="padding-right: 0.5rem;">
                                 <div style="display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end;">
-                                    <div class="mini-progress" style="width: 40px; margin-top: 0;">
-                                        <div class="mini-progress-fill" style="width: {advance_pct}%; background: {bar_color};"></div>
-                                    </div>
-                                    <span class="advance-badge {badge_class}" style="min-width: 65px; padding: 0.15rem 0.4rem; font-size: 0.8rem; margin-top: 0;">{advance_pct:.1f}%</span>
+                                    <span class="advance-badge {badge_class}" style="min-width: 55px; padding: 0.15rem 0.35rem; font-size: 0.8rem; margin-top: 0;">{advance_pct:.1f}%</span>
                                 </div>
                             </td>
                         </tr>
@@ -970,23 +981,25 @@ def main():
                                 {header_flags}
                             </div>
                         </div>
-                        <table class="standings-table">
-                            <thead>
-                                <tr>
-                                    <th>Proj</th>
-                                    <th class="team-col">Team</th>
-                                    <th>Elo</th>
-                                    <th>Pld</th>
-                                    <th>Pts</th>
-                                    <th>Avg Pts</th>
-                                    <th>Avg GD</th>
-                                    <th style="text-align: right; padding-right: 1.5rem;">Advance %</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {rows_html}
-                            </tbody>
-                        </table>
+                        <div style="overflow-x: auto; width: 100%;">
+                            <table class="standings-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 6%;">Proj</th>
+                                        <th class="team-col" style="width: 32%;">Team</th>
+                                        <th style="width: 11%;">Elo</th>
+                                        <th style="width: 7%;">Pld</th>
+                                        <th style="width: 7%;">Pts</th>
+                                        <th style="width: 11%;">Avg Pts</th>
+                                        <th style="width: 11%;">Avg GD</th>
+                                        <th style="width: 15%; text-align: right; padding-right: 0.5rem;">Advance %</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rows_html}
+                                </tbody>
+                            </table>
+                        </div>
                         {played_html}
                     </div>
                     """
