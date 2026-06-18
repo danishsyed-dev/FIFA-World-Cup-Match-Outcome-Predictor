@@ -19,7 +19,7 @@ THEME_CSS = """
 /* Global Dynamic Theme System */
 :root {
     color-scheme: light dark;
-    --background-color: light-dark(#ffffff, #0c0f0f);
+    --background-color: light-dark(#ffffff, #0f1716);
     --text-color: light-dark(#1f2937, #f8fafc);
     --home-color: light-dark(#0284c7, #38bdf8);
     --away-color: light-dark(#dc2626, #f87171);
@@ -58,6 +58,14 @@ div[data-baseweb="select"] > div {
     color: var(--text-color) !important;
     border-radius: 6px !important;
     cursor: pointer !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+div[data-baseweb="select"] > div:hover {
+    border-color: #10b981 !important;
+}
+div[data-baseweb="select"]:focus-within > div {
+    border-color: #10b981 !important;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2) !important;
 }
 div[data-testid="stSelectbox"] div, 
 div[data-testid="stSelectbox"] span, 
@@ -103,7 +111,7 @@ div.stButton > button, div.stDownloadButton > button {
     font-weight: 700 !important;
     font-size: 0.85rem !important;
     letter-spacing: 0.05em !important;
-    transition: all 0.2s ease !important;
+    transition: all 0.2s ease, transform 0.1s ease !important;
     height: 2.5rem;
 }
 div.stButton > button:hover, div.stDownloadButton > button:hover {
@@ -111,6 +119,13 @@ div.stButton > button:hover, div.stDownloadButton > button:hover {
     border-color: #10b981 !important;
     color: #10b981 !important;
     box-shadow: 0 0 10px rgba(16, 185, 129, 0.2) !important;
+}
+div.stButton > button:focus, div.stDownloadButton > button:focus {
+    outline: 2px solid #10b981 !important;
+    outline-offset: 2px !important;
+}
+div.stButton > button:active, div.stDownloadButton > button:active {
+    transform: scale(0.98) !important;
 }
 
 /* Sidebar Headings & Labels */

@@ -75,11 +75,12 @@ st.markdown("""
     flex-direction: column;
     justify-content: space-between;
     min-height: 180px;
-    transition: transform 0.2s ease, border-color 0.2s ease;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .match-card:hover {
     transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--card-border), var(--text-color) 20%);
+    border-color: #10b981;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);
 }
 .match-card-header {
     display: flex;
@@ -114,6 +115,7 @@ st.markdown("""
     align-items: center;
     gap: 0.6rem;
     flex: 1;
+    min-width: 0;
 }
 .match-team.home {
     justify-content: flex-start;
@@ -137,6 +139,7 @@ st.markdown("""
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    max-width: 110px;
 }
 .match-score-display {
     font-family: 'Space Grotesk', sans-serif;

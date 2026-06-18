@@ -214,7 +214,7 @@ st.markdown("""
     gap: 0.65rem;
 }
 .lb-flag {
-    width: 28px;
+    width: 20px;
     height: auto;
     border-radius: 3px;
 }
@@ -223,6 +223,12 @@ st.markdown("""
     font-size: 0.9rem;
     font-weight: 700;
     color: var(--title-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    max-width: 110px;
+    vertical-align: middle;
 }
 .lb-group {
     font-family: 'Space Grotesk', sans-serif;
@@ -1076,16 +1082,16 @@ def main():
             <table class="leaderboard-table">
                 <thead>
                     <tr>
-                        <th>#</th>
-                        <th>Team</th>
-                        <th>Group</th>
-                        <th>Elo</th>
-                        <th>Reach R32</th>
-                        <th>Reach R16</th>
-                        <th>Reach QF</th>
-                        <th>Reach SF</th>
-                        <th>Reach Final</th>
-                        <th>Champion %</th>
+                        <th style="width: 5%;">#</th>
+                        <th style="width: 20%;">Team</th>
+                        <th style="width: 8%;">Group</th>
+                        <th style="width: 9%;">Elo</th>
+                        <th style="width: 9%;">Reach R32</th>
+                        <th style="width: 9%;">Reach R16</th>
+                        <th style="width: 9%;">Reach QF</th>
+                        <th style="width: 9%;">Reach SF</th>
+                        <th style="width: 9%;">Reach Final</th>
+                        <th style="width: 13%;">Champion %</th>
                     </tr>
                 </thead>
                 <tbody>

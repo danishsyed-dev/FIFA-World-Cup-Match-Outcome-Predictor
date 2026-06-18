@@ -61,6 +61,7 @@ st.markdown(
         align-items: center;
         gap: 1.5rem;
         flex: 1;
+        min-width: 0;
     }
     .home-panel {
         justify-content: flex-start;
@@ -92,14 +93,16 @@ st.markdown(
         width: 75px;
         height: auto;
         border-radius: 6px;
-        transition: transform 0.3s ease;
+        transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
     }
     .team-flag:hover {
-        transform: scale(1.06);
+        transform: scale(1.05);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
     }
     .team-info {
         display: flex;
         flex-direction: column;
+        min-width: 0;
     }
     .team-role {
         font-size: 0.7rem;
