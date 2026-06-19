@@ -365,6 +365,8 @@ def main():
         # Reload Predictions
         st.markdown("---")
         if st.button("RELOAD PREDICTIONS", width='stretch'):
+            st.cache_data.clear()
+            st.cache_resource.clear()
             if "wc_predictions_df" in st.session_state:
                 del st.session_state.wc_predictions_df
             st.rerun()

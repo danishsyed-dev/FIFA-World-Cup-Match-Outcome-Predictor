@@ -384,16 +384,16 @@ def elo_comparison_chart(home_team, away_team, home_elo, away_elo):
     fig = go.Figure(go.Bar(
         x=[home_team, away_team],
         y=[home_elo, away_elo],
-        marker_color=["#0284c7", "#dc2626"],  # Uses mid-tones that look great in both dark and light
+        marker_color=["#38bdf8", "#f87171"],  # Home and Away Team Accents from theme
         text=[f"{home_elo:.0f}", f"{away_elo:.0f}"],
         textposition="outside",
-        textfont=dict(size=13, family="Space Grotesk"),
+        textfont=dict(size=13, family="Space Grotesk", color="#f8fafc"),
         width=0.4,
     ))
     fig.update_layout(
         title={
             "text": "ELO RATING COMPARISON",
-            "font": {"size": 13, "family": "Outfit", "weight": "bold"},
+            "font": {"size": 13, "family": "Outfit", "weight": "bold", "color": "#f8fafc"},
             "pad": {"b": 10}
         },
         paper_bgcolor="rgba(0,0,0,0)",
@@ -403,10 +403,10 @@ def elo_comparison_chart(home_team, away_team, home_elo, away_elo):
             showgrid=True, 
             zeroline=False,
             range=[min(home_elo, away_elo) - 150, max(home_elo, away_elo) + 150],
-            tickfont=dict(family="Space Grotesk")
+            tickfont=dict(family="Space Grotesk", color="#94a3b8")
         ),
         xaxis=dict(
-            tickfont=dict(size=13, family="Outfit"),
+            tickfont=dict(size=13, family="Outfit", color="#f8fafc"),
             showgrid=False
         ),
         margin=dict(t=50, b=10, l=10, r=10),

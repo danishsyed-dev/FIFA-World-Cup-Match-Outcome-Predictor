@@ -23,7 +23,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 @st.cache_data(show_spinner=False)
 def get_cached_group_standings_png(results, selected_view):
@@ -658,7 +657,7 @@ def build_group_chart(group_df: pd.DataFrame, group_name: str) -> go.Figure:
         ),
         yaxis=dict(
             showgrid=False,
-            tickfont=dict(size=12, family="Outfit", weight="bold"),
+            tickfont=dict(size=12, family="Outfit", weight="bold", color="#f8fafc"),
             automargin=False,
         ),
         legend=dict(
@@ -667,7 +666,7 @@ def build_group_chart(group_df: pd.DataFrame, group_name: str) -> go.Figure:
             y=1.02,
             xanchor="center",
             x=0.5,
-            font=dict(size=11, family="Outfit"),
+            font=dict(size=11, family="Outfit", color="#94a3b8"),
             traceorder="normal",
         ),
         showlegend=True,
