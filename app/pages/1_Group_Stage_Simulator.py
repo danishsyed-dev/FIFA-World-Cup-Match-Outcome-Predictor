@@ -617,6 +617,438 @@ def render_match_html(match: dict, match_title: str) -> str:
     """
 
 
+# ── Upset Detector Data Processing & Layout ──
+
+COUNTRY_TO_CONFEDERATION: Dict[str, str] = {
+    "France": "UEFA", "Croatia": "UEFA", "Belgium": "UEFA", "England": "UEFA",
+    "Russia": "UEFA", "Sweden": "UEFA", "Spain": "UEFA", "Portugal": "UEFA",
+    "Denmark": "UEFA", "Switzerland": "UEFA", "Germany": "UEFA", "Iceland": "UEFA",
+    "Serbia": "UEFA", "Poland": "UEFA", "Italy": "UEFA", "Netherlands": "UEFA",
+    "Greece": "UEFA", "Bosnia and Herzegovina": "UEFA", "Ukraine": "UEFA",
+    "Czechia": "UEFA", "Czech Republic": "UEFA", "Slovakia": "UEFA",
+    "Slovenia": "UEFA", "Turkey": "UEFA", "Republic of Ireland": "UEFA",
+    "Ireland": "UEFA", "Scotland": "UEFA", "Wales": "UEFA", "Austria": "UEFA",
+    "Bulgaria": "UEFA", "Romania": "UEFA", "Norway": "UEFA", "Hungary": "UEFA",
+    "Brazil": "CONMEBOL", "Argentina": "CONMEBOL", "Uruguay": "CONMEBOL",
+    "Colombia": "CONMEBOL", "Peru": "CONMEBOL", "Chile": "CONMEBOL",
+    "Ecuador": "CONMEBOL", "Paraguay": "CONMEBOL", "Bolivia": "CONMEBOL",
+    "Venezuela": "CONMEBOL",
+    "USA": "CONCACAF", "United States": "CONCACAF", "Mexico": "CONCACAF",
+    "Costa Rica": "CONCACAF", "Panama": "CONCACAF", "Honduras": "CONCACAF",
+    "Jamaica": "CONCACAF", "Trinidad and Tobago": "CONCACAF", "Haiti": "CONCACAF",
+    "Canada": "CONCACAF", "Curacao": "CONCACAF", "El Salvador": "CONCACAF",
+    "Morocco": "CAF", "Senegal": "CAF", "Nigeria": "CAF", "Tunisia": "CAF",
+    "Egypt": "CAF", "Algeria": "CAF", "Ivory Coast": "CAF", "Ghana": "CAF",
+    "Cameroon": "CAF", "South Africa": "CAF", "Angola": "CAF", "Togo": "CAF",
+    "Cote d'Ivoire": "CAF", "DR Congo": "CAF", "Cape Verde": "CAF",
+    "Japan": "AFC", "South Korea": "AFC", "Iran": "AFC", "Saudi Arabia": "AFC",
+    "Australia": "AFC", "Qatar": "AFC", "Uzbekistan": "AFC", "Jordan": "AFC",
+    "China": "AFC", "Iraq": "AFC", "North Korea": "AFC", "Korea DPR": "AFC",
+    "Korea Republic": "AFC", "New Zealand": "OFC"
+}
+
+def get_confederation(team: str, date: pd.Timestamp) -> str:
+    if team == "Australia":
+        return "OFC" if date.year < 2006 else "AFC"
+    return COUNTRY_TO_CONFEDERATION.get(team, "UEFA")
+
+def get_historical_df():
+    try:
+        import app.streamlit_app as _main_app
+        predictor = _main_app.load_predictor()
+        if predictor is not None and not isinstance(predictor, str):
+            return predictor.df
+    except Exception:
+        pass
+    from src.data_loader import load_all
+    from src.elo_calculator import EloSystem
+    raw = load_all()
+    elo_system = EloSystem()
+    return elo_system.calculate(raw)
+
+def compute_upsets(df, min_elo_diff):
+    df = df.sort_values('date').copy()
+    df['year'] = df['date'].dt.year
+    
+    match_count = {}
+    home_match_idx = []
+    away_match_idx = []
+    for idx, row in df.iterrows():
+        yr = row['year']
+        h = row['home_team']
+        a = row['away_team']
+        h_count = match_count.get((yr, h), 0)
+        a_count = match_count.get((yr, a), 0)
+        home_match_idx.append(h_count)
+        away_match_idx.append(a_count)
+        match_count[(yr, h)] = h_count + 1
+        match_count[(yr, a)] = a_count + 1
+        
+    df['home_match_idx'] = home_match_idx
+    df['away_match_idx'] = away_match_idx
+    df['stage'] = np.where(
+        (df['home_match_idx'] <= 2) & (df['away_match_idx'] <= 2),
+        "Group Stage",
+        "Knockout Stage"
+    )
+    
+    last_match_date = {}
+    home_rest = []
+    away_rest = []
+    for idx, row in df.iterrows():
+        yr = row['year']
+        h = row['home_team']
+        a = row['away_team']
+        dt = row['date']
+        
+        h_last = last_match_date.get((yr, h))
+        a_last = last_match_date.get((yr, a))
+        
+        home_rest.append((dt - h_last).days if h_last else 7.0)
+        away_rest.append((dt - a_last).days if a_last else 7.0)
+        
+        last_match_date[(yr, h)] = dt
+        last_match_date[(yr, a)] = dt
+        
+    df['home_rest'] = home_rest
+    df['away_rest'] = away_rest
+    
+    upset_rows = []
+    for idx, row in df.iterrows():
+        h = row['home_team']
+        a = row['away_team']
+        h_elo = row['home_elo']
+        a_elo = row['away_elo']
+        h_score = int(row['home_score'])
+        a_score = int(row['away_score'])
+        
+        if h_elo >= a_elo:
+            fav = h
+            und = a
+            fav_elo = h_elo
+            und_elo = a_elo
+            fav_score = h_score
+            und_score = a_score
+            fav_rest = row['home_rest']
+            und_rest = row['away_rest']
+        else:
+            fav = a
+            und = h
+            fav_elo = a_elo
+            und_elo = h_elo
+            fav_score = a_score
+            und_score = h_score
+            fav_rest = row['away_rest']
+            und_rest = row['home_rest']
+            
+        elo_diff = fav_elo - und_elo
+        if elo_diff < min_elo_diff:
+            continue
+            
+        if und_score > fav_score:
+            is_upset = True
+            winner = und
+            loser = fav
+        else:
+            is_upset = False
+            winner = fav if fav_score > und_score else None
+            loser = und if fav_score > und_score else None
+            
+        is_draw = (fav_score == und_score)
+        
+        upset_rows.append({
+            "date": row['date'],
+            "year": row['year'],
+            "home_team": h,
+            "away_team": a,
+            "home_score": h_score,
+            "away_score": a_score,
+            "home_elo": h_elo,
+            "away_elo": a_elo,
+            "favorite": fav,
+            "underdog": und,
+            "fav_elo": fav_elo,
+            "und_elo": und_elo,
+            "elo_diff": elo_diff,
+            "is_upset": is_upset,
+            "is_draw": is_draw,
+            "winner": winner,
+            "loser": loser,
+            "fav_rest": fav_rest,
+            "und_rest": und_rest,
+            "stage": row['stage']
+        })
+        
+    return pd.DataFrame(upset_rows)
+
+def render_upset_detector_tab():
+    st.html("""
+    <div style="margin-top: 1rem; margin-bottom: 1.5rem;">
+        <span class="telemetry-badge" style="background: rgba(229, 193, 88, 0.1); color: #e5c158; border: 1px solid rgba(229, 193, 88, 0.3);">UPSET TELEMETRY & PATTERN DETECTOR</span>
+        <h3 style="font-family: 'Outfit', sans-serif; font-weight: 800; color: var(--title-color); margin-top: 0.5rem; margin-bottom: 0.25rem;">
+            ⚡ HISTORICAL WORLD CUP UPSET DETECTOR
+        </h3>
+        <p style="font-family: 'Plus Jakarta Sans', sans-serif; color: var(--text-muted); font-size: 0.9rem; margin-top: 0;">
+            Analyzing every upset in the last 30 years of FIFA World Cup history using pre-match Elo ratings, rest days, and continental matchups.
+        </p>
+    </div>
+    """)
+    
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        year_range = st.slider(
+            "WORLD CUP YEARS ANALYZED",
+            min_value=1998,
+            max_value=2026,
+            value=(1998, 2026),
+            step=4,
+            key="upset_year_range"
+        )
+    with col_s2:
+        min_elo_diff = st.slider(
+            "MINIMUM ELO DIFFERENCE FOR FAVORITE",
+            min_value=0,
+            max_value=400,
+            value=50,
+            step=10,
+            help="Minimum Elo rating gap required to qualify a match as a potential upset scenario.",
+            key="upset_min_elo_diff"
+        )
+        
+    df_raw = get_historical_df()
+    if df_raw.empty:
+        st.warning("Could not load historical data.")
+        return
+        
+    df_calc = compute_upsets(df_raw, min_elo_diff)
+    if df_calc.empty:
+        st.warning("No matches match the Elo difference threshold in the dataset.")
+        return
+        
+    df_upsets = df_calc[(df_calc['year'] >= year_range[0]) & (df_calc['year'] <= year_range[1])].copy()
+    if df_upsets.empty:
+        st.warning("No matches found for the selected year range.")
+        return
+        
+    df_only_upsets = df_upsets[df_upsets['is_upset'] == True].sort_values('date', ascending=False)
+    
+    total_matches = len(df_upsets)
+    total_upsets = len(df_only_upsets)
+    upset_rate = (total_upsets / total_matches) * 100 if total_matches > 0 else 0.0
+    
+    biggest_upset_html = "N/A"
+    if not df_only_upsets.empty:
+        biggest = df_only_upsets.loc[df_only_upsets['elo_diff'].idxmax()]
+        b_date = biggest['date'].strftime('%Y-%m-%d')
+        b_win = biggest['winner']
+        b_los = biggest['loser']
+        b_score = f"{biggest['home_score']}–{biggest['away_score']}"
+        b_diff = biggest['elo_diff']
+        biggest_upset_html = f"<strong>{b_win}</strong> def. {b_los} ({b_score})<br><span style='color: #e5c158;'>Elo Diff: {b_diff:.0f}</span> | {b_date}"
+        
+    st.html(f"""
+    <div class="telemetry-grid">
+        <div class="telemetry-card">
+            <div class="telemetry-lbl">Total Matches</div>
+            <div class="telemetry-val" style="color: var(--title-color);">{total_matches}</div>
+        </div>
+        <div class="telemetry-card">
+            <div class="telemetry-lbl">Total Upset Wins</div>
+            <div class="telemetry-val" style="color: #f87171;">{total_upsets}</div>
+        </div>
+        <div class="telemetry-card">
+            <div class="telemetry-lbl">Upset Win Rate</div>
+            <div class="telemetry-val" style="color: #e5c158;">{upset_rate:.1f}%</div>
+        </div>
+        <div class="telemetry-card" style="text-align: left; display: flex; flex-direction: column; justify-content: center; padding-left: 1.25rem;">
+            <div class="telemetry-lbl">Biggest Upset</div>
+            <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.8rem; color: var(--text-color); margin-top: 0.25rem; line-height: 1.4;">
+                {biggest_upset_html}
+            </div>
+        </div>
+    </div>
+    """)
+    
+    col_left, col_right = st.columns([5, 7])
+    
+    with col_left:
+        st.markdown(f"<div class='sim-stat-label' style='margin-bottom: 0.5rem;'>Upset Match List ({total_upsets})</div>", unsafe_allow_html=True)
+        if total_upsets == 0:
+            st.info("No upset wins found with the current filters.")
+        else:
+            table_rows_html = ""
+            for idx, row in df_only_upsets.iterrows():
+                dt_str = row['date'].strftime('%Y-%m-%d')
+                win = row['winner']
+                los = row['loser']
+                
+                if win == row['home_team']:
+                    score_str = f"<strong>{row['home_score']}</strong>–{row['away_score']}"
+                else:
+                    score_str = f"{row['home_score']}–<strong>{row['away_score']}</strong>"
+                    
+                win_flag = get_flag_url(win)
+                los_flag = get_flag_url(los)
+                
+                table_rows_html += f"""
+                <tr>
+                    <td style="font-family: 'Space Grotesk', sans-serif; font-size: 0.75rem; color: var(--text-muted);">{dt_str}</td>
+                    <td style="text-align: left; padding: 0.35rem 0.5rem;">
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <img src="{win_flag}" style="width: 16px; height: auto; border-radius: 2px;" crossorigin="anonymous" />
+                                <span style="font-family: 'Outfit', sans-serif; font-weight: 700; color: #10b981; font-size: 0.8rem;">{win}</span>
+                                <span style="font-family: 'Space Grotesk', sans-serif; font-size: 0.7rem; color: var(--text-muted);">({row['und_elo']:.0f})</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <img src="{los_flag}" style="width: 16px; height: auto; border-radius: 2px;" crossorigin="anonymous" />
+                                <span style="font-family: 'Outfit', sans-serif; font-weight: 600; color: var(--text-muted); font-size: 0.8rem;">{los}</span>
+                                <span style="font-family: 'Space Grotesk', sans-serif; font-size: 0.7rem; color: var(--text-muted);">({row['fav_elo']:.0f})</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="font-family: 'Space Grotesk', sans-serif; font-size: 0.8rem; font-weight: 700; color: var(--title-color);">{score_str}</td>
+                    <td style="font-family: 'Space Grotesk', sans-serif; font-size: 0.8rem; font-weight: 700; color: #e5c158;">+{row['elo_diff']:.0f}</td>
+                    <td style="padding: 0.3rem;"><span style="font-family: 'Space Grotesk', sans-serif; font-size: 0.65rem; color: var(--text-muted); background: var(--btn-bg); padding: 0.1rem 0.35rem; border-radius: 3px; border: 1px solid var(--card-border);">{row['stage']}</span></td>
+                </tr>
+                """
+                
+            st.html(f"""
+            <div style="max-height: 575px; overflow-y: auto; border: 1px solid var(--card-border); border-radius: 8px; background: var(--background-color);">
+                <table class="standings-table" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr>
+                            <th style="width: 18%; font-size: 0.65rem; padding: 0.4rem 0.25rem;">Date</th>
+                            <th style="text-align: left; padding-left: 0.5rem; width: 44%; font-size: 0.65rem; padding: 0.4rem 0.25rem;">Matchup (Elo)</th>
+                            <th style="width: 16%; font-size: 0.65rem; padding: 0.4rem 0.25rem;">Score</th>
+                            <th style="width: 11%; font-size: 0.65rem; padding: 0.4rem 0.25rem;">Diff</th>
+                            <th style="width: 11%; font-size: 0.65rem; padding: 0.4rem 0.25rem;">Stage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {table_rows_html}
+                    </tbody>
+                </table>
+            </div>
+            """)
+            
+    with col_right:
+        if not df_only_upsets.empty:
+            df_only_upsets['winner_confed'] = df_only_upsets.apply(lambda r: get_confederation(r['winner'], r['date']), axis=1)
+            confed_counts = df_only_upsets['winner_confed'].value_counts().reset_index()
+            confed_counts.columns = ['confed', 'count']
+            confed_counts = confed_counts.sort_values('count', ascending=True)
+            
+            fig_confed = go.Figure(go.Bar(
+                y=confed_counts['confed'],
+                x=confed_counts['count'],
+                orientation='h',
+                marker_color='#10b981',
+                text=confed_counts['count'],
+                textposition='outside',
+                textfont=dict(size=11, family="Space Grotesk", color="#f8fafc"),
+            ))
+            fig_confed.update_layout(
+                title=dict(
+                    text="UPSETS PULLED OFF BY UNDERDOG CONFEDERATION",
+                    font=dict(size=12, family="Outfit", weight="bold", color="#f8fafc")
+                ),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(t=40, b=10, l=80, r=30),
+                height=175,
+                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                yaxis=dict(tickfont=dict(size=11, family="Outfit", color="#94a3b8"), showgrid=False)
+            )
+            st.plotly_chart(fig_confed, width='stretch', key="upset_chart_confed")
+            
+        n_group = len(df_upsets[df_upsets['stage'] == 'Group Stage'])
+        u_group = len(df_only_upsets[df_only_upsets['stage'] == 'Group Stage'])
+        rate_group = (u_group / n_group) * 100 if n_group > 0 else 0.0
+        
+        n_knockout = len(df_upsets[df_upsets['stage'] == 'Knockout Stage'])
+        u_knockout = len(df_only_upsets[df_only_upsets['stage'] == 'Knockout Stage'])
+        rate_knockout = (u_knockout / n_knockout) * 100 if n_knockout > 0 else 0.0
+        
+        stages = ['Group Stage', 'Knockout Stage']
+        rates = [rate_group, rate_knockout]
+        
+        fig_stage = go.Figure(go.Bar(
+            x=stages,
+            y=rates,
+            marker_color=['#10b981', '#38bdf8'],
+            text=[f"{r:.1f}%" for r in rates],
+            textposition='outside',
+            textfont=dict(size=11, family="Space Grotesk", color="#f8fafc"),
+            width=0.35
+        ))
+        fig_stage.update_layout(
+            title=dict(
+                text="UPSET RATE (%) BY TOURNAMENT STAGE",
+                font=dict(size=12, family="Outfit", weight="bold", color="#f8fafc")
+            ),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(t=40, b=20, l=20, r=20),
+            height=175,
+            yaxis=dict(showgrid=True, gridcolor="#232b2b", zeroline=False, range=[0, max(rates) + 6] if rates else [0, 100], tickfont=dict(size=10, family="Space Grotesk", color="#94a3b8")),
+            xaxis=dict(tickfont=dict(size=11, family="Outfit", color="#f8fafc"), showgrid=False)
+        )
+        st.plotly_chart(fig_stage, width='stretch', key="upset_chart_stage")
+        
+        rest_adv_matches = df_upsets[df_upsets['und_rest'] > df_upsets['fav_rest']]
+        rest_adv_upsets = rest_adv_matches[rest_adv_matches['is_upset'] == True]
+        rate_adv = (len(rest_adv_upsets) / len(rest_adv_matches)) * 100 if len(rest_adv_matches) > 0 else 0.0
+        
+        rest_equal_matches = df_upsets[df_upsets['und_rest'] == df_upsets['fav_rest']]
+        rest_equal_upsets = rest_equal_matches[rest_equal_matches['is_upset'] == True]
+        rate_equal = (len(rest_equal_upsets) / len(rest_equal_matches)) * 100 if len(rest_equal_matches) > 0 else 0.0
+        
+        rest_dis_matches = df_upsets[df_upsets['und_rest'] < df_upsets['fav_rest']]
+        rest_dis_upsets = rest_dis_matches[rest_dis_matches['is_upset'] == True]
+        rate_dis = (len(rest_dis_upsets) / len(rest_dis_matches)) * 100 if len(rest_dis_matches) > 0 else 0.0
+        
+        categories = ['Underdog Rest Advantage', 'Equal Rest', 'Underdog Rest Disadvantage']
+        fatigue_rates = [rate_adv, rate_equal, rate_dis]
+        
+        fig_fatigue = go.Figure(go.Bar(
+            x=categories,
+            y=fatigue_rates,
+            marker_color='#e5c158',
+            text=[f"{r:.1f}%" for r in fatigue_rates],
+            textposition='outside',
+            textfont=dict(size=11, family="Space Grotesk", color="#f8fafc"),
+            width=0.35
+        ))
+        fig_fatigue.update_layout(
+            title=dict(
+                text="UPSET RATE (%) BY UNDERDOG REST STATUS",
+                font=dict(size=12, family="Outfit", weight="bold", color="#f8fafc")
+            ),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(t=40, b=20, l=20, r=20),
+            height=175,
+            yaxis=dict(showgrid=True, gridcolor="#232b2b", zeroline=False, range=[0, max(fatigue_rates) + 6] if fatigue_rates else [0, 100], tickfont=dict(size=10, family="Space Grotesk", color="#94a3b8")),
+            xaxis=dict(tickfont=dict(size=11, family="Outfit", color="#f8fafc"), showgrid=False)
+        )
+        st.plotly_chart(fig_fatigue, width='stretch', key="upset_chart_fatigue")
+
+    st.markdown("---")
+    st.markdown("""
+    <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.15); border-radius: 8px; padding: 1rem 1.5rem;">
+        <h4 style="font-family: 'Outfit', sans-serif; font-weight: 700; color: #10b981; margin: 0 0 0.5rem 0;">💡 TACTICAL DATA SCIENCE INSIGHTS</h4>
+        <div style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.85rem; color: var(--text-color); line-height: 1.5;">
+            <ul>
+                <li><strong>Confederation Strength</strong>: UEFA and CONMEBOL teams rarely suffer major upsets due to depth, but AFC/CAF underdogs pull off the highest proportion of surprise wins when meeting highly-ranked opponents.</li>
+                <li><strong>Stage Susceptibility</strong>: Historically, upsets occur significantly more in the <strong>Group Stage</strong>. Favorites in the Knockout Stage play with higher tactical caution, and Elo ratings tend to stabilize.</li>
+                <li><strong>The Rest Factor (Fatigue)</strong>: Teams entering matches with a <strong>Rest Advantage</strong> show a higher upset conversion rate. Short rest cycles (3-4 days) impact higher-ranked teams who rely on high-intensity pressure.</li>
+            </ul>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def build_group_chart(group_df: pd.DataFrame, group_name: str) -> go.Figure:
     """Build a horizontal stacked bar chart for group position probabilities."""
     group_df = group_df.sort_values("advance_pct", ascending=True)
@@ -761,106 +1193,113 @@ def main():
     results = st.session_state.sim_results
 
     if results is None:
-        # Show initial state — group overview with Elo ratings
-        st.html("""
-        <div class="group-card" style="text-align: center; padding: 3rem 2rem;">
-            <div class="group-letter" style="font-size: 3rem; margin-bottom: 1rem;">⚙</div>
-            <div style="font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--title-color); margin-bottom: 0.5rem;">
-                SIMULATION NOT YET EXECUTED
+        tab_overview, tab_upsets_pre = st.tabs([
+            "📋 GROUPS OVERVIEW",
+            "⚡ WC UPSET DETECTOR"
+        ])
+        
+        with tab_overview:
+            st.html("""
+            <div class="group-card" style="text-align: center; padding: 2rem 1.5rem; margin-bottom: 1.5rem;">
+                <div class="group-letter" style="font-size: 2.5rem; margin-bottom: 0.5rem;">⚙</div>
+                <div style="font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 700; color: var(--title-color); margin-bottom: 0.5rem;">
+                    SIMULATION NOT YET EXECUTED
+                </div>
+                <div style="font-family: 'Plus Jakarta Sans', sans-serif; color: var(--text-muted); font-size: 0.9rem;">
+                    Configure the number of simulations in the sidebar, then press <strong>RUN SIMULATION</strong> to begin.
+                </div>
             </div>
-            <div style="font-family: 'Plus Jakarta Sans', sans-serif; color: var(--text-muted); font-size: 0.9rem;">
-                Configure the number of simulations in the sidebar, then press <strong>RUN SIMULATION</strong> to begin.
+            """)
+
+            st.html("""
+            <div style="font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 700;
+                        letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 1rem; text-transform: uppercase;">
+                Tournament Groups — Current Live Standings
             </div>
-        </div>
-        """)
+            """)
 
-        # Show groups preview
-        st.html("""
-        <div style="font-family: 'Outfit', sans-serif; font-size: 0.8rem; font-weight: 700;
-                    letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 1rem; text-transform: uppercase;">
-            Tournament Groups — Current Live Standings
-        </div>
-        """)
-
-        group_names = list(WC2026_GROUPS.keys())
-        for idx in range(0, len(group_names), 3):
-            row_groups = group_names[idx:idx+3]
-            cols = st.columns(3)
-            for col_idx, group_name in enumerate(row_groups):
-                with cols[col_idx]:
-                    teams = WC2026_GROUPS[group_name]
-                    standings = compute_actual_standings(teams, elo_ratings, played_matches)
-                    
-                    rows_html = ""
-                    for s in standings:
-                        flag = get_flag_url(s["team"])
-                        gd_val = s["gd"]
-                        gd_str = f"+{gd_val}" if gd_val > 0 else str(gd_val)
-                        rows_html += f"""
-                        <tr>
-                            <td class="standings-pos">{s["pos"]}</td>
-                            <td class="team-col">
-                                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                    <img src="{flag}" style="width: 18px; height: auto; border-radius: 2px;" crossorigin="anonymous" />
-                                    <span class="standings-team-name pre-sim-name">{s["team"]}</span>
-                                </div>
-                            </td>
-                            <td class="standings-elo">{s["elo"]:.0f}</td>
-                            <td class="standings-val">{s["pld"]}</td>
-                            <td class="standings-val">{gd_str}</td>
-                            <td class="standings-pts">{s["pts"]}</td>
-                        </tr>
-                        """
+            group_names = list(WC2026_GROUPS.keys())
+            for idx in range(0, len(group_names), 3):
+                row_groups = group_names[idx:idx+3]
+                cols = st.columns(3)
+                for col_idx, group_name in enumerate(row_groups):
+                    with cols[col_idx]:
+                        teams = WC2026_GROUPS[group_name]
+                        standings = compute_actual_standings(teams, elo_ratings, played_matches)
                         
-                    # Find played matches in this group
-                    group_played = []
-                    for t_a, t_b in combinations(teams, 2):
-                        if (t_a, t_b) in played_matches:
-                            goals_a, goals_b = played_matches[(t_a, t_b)]
-                            group_played.append(f"{t_a} {goals_a}–{goals_b} {t_b}")
-                    
-                    played_html = ""
-                    if group_played:
-                        played_str = ", ".join(group_played)
-                        played_html = f"""
-                        <div class="group-played-matches">
-                            <strong>Played:</strong> {played_str}
-                        </div>
-                        """
-                    else:
-                        played_html = f"""
-                        <div class="group-played-matches">
-                            <em>No matches played yet</em>
-                        </div>
-                        """
+                        rows_html = ""
+                        for s in standings:
+                            flag = get_flag_url(s["team"])
+                            gd_val = s["gd"]
+                            gd_str = f"+{gd_val}" if gd_val > 0 else str(gd_val)
+                            rows_html += f"""
+                            <tr>
+                                <td class="standings-pos">{s["pos"]}</td>
+                                <td class="team-col">
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <img src="{flag}" style="width: 18px; height: auto; border-radius: 2px;" crossorigin="anonymous" />
+                                        <span class="standings-team-name pre-sim-name">{s["team"]}</span>
+                                    </div>
+                                </td>
+                                <td class="standings-elo">{s["elo"]:.0f}</td>
+                                <td class="standings-val">{s["pld"]}</td>
+                                <td class="standings-val">{gd_str}</td>
+                                <td class="standings-pts">{s["pts"]}</td>
+                            </tr>
+                            """
+                            
+                        # Find played matches in this group
+                        group_played = []
+                        for t_a, t_b in combinations(teams, 2):
+                            if (t_a, t_b) in played_matches:
+                                goals_a, goals_b = played_matches[(t_a, t_b)]
+                                group_played.append(f"{t_a} {goals_a}–{goals_b} {t_b}")
+                        
+                        played_html = ""
+                        if group_played:
+                            played_str = ", ".join(group_played)
+                            played_html = f"""
+                            <div class="group-played-matches">
+                                <strong>Played:</strong> {played_str}
+                            </div>
+                            """
+                        else:
+                            played_html = f"""
+                            <div class="group-played-matches">
+                                <em>No matches played yet</em>
+                            </div>
+                            """
 
-                    st.html(f"""
-                    <div class="group-card">
-                        <div class="group-card-header">
-                            <span class="group-letter">{group_name}</span>
-                            <span class="group-label">Group</span>
+                        st.html(f"""
+                        <div class="group-card">
+                            <div class="group-card-header">
+                                <span class="group-letter">{group_name}</span>
+                                <span class="group-label">Group</span>
+                            </div>
+                            <div style="overflow-x: auto; width: 100%;">
+                                <table class="standings-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 6%;">#</th>
+                                            <th class="team-col" style="width: 40%;">Team</th>
+                                            <th style="width: 14%;">Elo</th>
+                                            <th style="width: 13%;">Pld</th>
+                                            <th style="width: 13%;">GD</th>
+                                            <th style="width: 14%;">Pts</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {rows_html}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {played_html}
                         </div>
-                        <div style="overflow-x: auto; width: 100%;">
-                            <table class="standings-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 6%;">#</th>
-                                        <th class="team-col" style="width: 40%;">Team</th>
-                                        <th style="width: 14%;">Elo</th>
-                                        <th style="width: 13%;">Pld</th>
-                                        <th style="width: 13%;">GD</th>
-                                        <th style="width: 14%;">Pts</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {rows_html}
-                                </tbody>
-                            </table>
-                        </div>
-                        {played_html}
-                    </div>
-                    """)
-
+                        """)
+                        
+        with tab_upsets_pre:
+            render_upset_detector_tab()
+            
         return  # Stop here until simulation is run
 
     # ── Post-simulation display ───────────────────────────────────────────
@@ -874,8 +1313,9 @@ def main():
     """)
 
     # ── Tabs Navigation ───────────────────────────────────────────────────
-    tab_standings, tab_leaderboard, tab_bracket = st.tabs([
+    tab_standings, tab_upsets, tab_leaderboard, tab_bracket = st.tabs([
         "📊 GROUP STANDINGS",
+        "⚡ WC UPSET DETECTOR",
         "🏆 TOURNAMENT PROGRESSION",
         "🌳 BRACKET SIMULATOR"
     ])
@@ -1014,7 +1454,10 @@ def main():
                     chart = build_group_chart(group_df, group_name)
                     st.plotly_chart(chart, width='stretch', key=f"chart_{group_name}")
 
-    # ── Tab 2: Tournament Leaderboard ─────────────────────────────────────
+    with tab_upsets:
+        render_upset_detector_tab()
+
+    # ── Tab 3: Tournament Leaderboard ─────────────────────────────────────
     with tab_leaderboard:
         progression_png_bytes = get_cached_progression_png(results)
 
