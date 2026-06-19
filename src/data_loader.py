@@ -73,27 +73,36 @@ def merge_elo(results: pd.DataFrame, elo: pd.DataFrame) -> pd.DataFrame:
     missing = required - set(elo.columns)
     if missing:
         print(f"[data_loader] WARNING: Elo dataset missing columns {missing}. Skipping Elo merge.")
-        results["home_elo"] = 1500
-        results["away_elo"] = 1500
+        results["home_elo"] = 1500.0
+        results["away_elo"] = 1500.0
         return results
 
-    elo_sorted = elo.sort_values("date")
-
-    def get_elo_at(team: str, match_date: pd.Timestamp) -> float:
-        team_elo = elo_sorted[elo_sorted["team"] == team]
-        before = team_elo[team_elo["date"] <= match_date]
-        if before.empty:
-            return 1500.0  # default starting Elo
-        return float(before.iloc[-1]["elo"])
-
-    print("[data_loader] Merging Elo ratings (this may take a moment)...")
+    print("[data_loader] Merging Elo ratings (using optimized merge_asof)...")
     results = results.sort_values("date").reset_index(drop=True)
-    results["home_elo"] = results.apply(
-        lambda r: get_elo_at(r["home_team"], r["date"]), axis=1
+    elo = elo.sort_values("date").reset_index(drop=True)
+
+    # Merge for home_team
+    home_merged = pd.merge_asof(
+        results,
+        elo,
+        on="date",
+        left_by="home_team",
+        right_by="team",
+        direction="backward"
     )
-    results["away_elo"] = results.apply(
-        lambda r: get_elo_at(r["away_team"], r["date"]), axis=1
+    results["home_elo"] = home_merged["elo"].fillna(1500.0)
+
+    # Merge for away_team
+    away_merged = pd.merge_asof(
+        results,
+        elo,
+        on="date",
+        left_by="away_team",
+        right_by="team",
+        direction="backward"
     )
+    results["away_elo"] = away_merged["elo"].fillna(1500.0)
+
     print("[data_loader] Elo merge complete.")
     return results
 
