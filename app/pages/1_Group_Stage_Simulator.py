@@ -16,7 +16,9 @@ from pathlib import Path
 # Add project root to python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+import importlib
 import src.image_generator
+importlib.reload(src.image_generator)
 import src.group_simulator
 
 import streamlit as st
@@ -25,17 +27,20 @@ import numpy as np
 import plotly.graph_objects as go
 
 @st.cache_data(show_spinner=False)
-def get_cached_group_standings_png(results, selected_view):
+def get_cached_group_standings_png_v2(results, selected_view):
+    # force cache reload: v6
     from src.image_generator import generate_group_standings_png
     return generate_group_standings_png(results, selected_view)
 
 @st.cache_data(show_spinner=False)
-def get_cached_progression_png(results):
+def get_cached_progression_png_v2(results):
+    # force cache reload: v6
     from src.image_generator import generate_progression_png
     return generate_progression_png(results)
 
 @st.cache_data(show_spinner=False)
-def get_cached_bracket_png(bracket_data):
+def get_cached_bracket_png_v2(bracket_data):
+    # force cache reload: v6
     from src.image_generator import generate_bracket_png
     return generate_bracket_png(bracket_data)
 
@@ -1322,7 +1327,7 @@ def main():
 
     # ── Tab 1: Group Standings ────────────────────────────────────────────
     with tab_standings:
-        standings_png_bytes = get_cached_group_standings_png(results, selected_view)
+        standings_png_bytes = get_cached_group_standings_png_v2(results, selected_view)
         col_dummy, col_btn = st.columns([3, 1])
         with col_btn:
             st.download_button(
@@ -1459,7 +1464,7 @@ def main():
 
     # ── Tab 3: Tournament Leaderboard ─────────────────────────────────────
     with tab_leaderboard:
-        progression_png_bytes = get_cached_progression_png(results)
+        progression_png_bytes = get_cached_progression_png_v2(results)
 
         col_lbl, col_btn = st.columns([3, 1])
         with col_lbl:
@@ -1569,7 +1574,7 @@ def main():
         bracket_data = st.session_state.sample_bracket
 
         with col2:
-            bracket_png_bytes = get_cached_bracket_png(bracket_data)
+            bracket_png_bytes = get_cached_bracket_png_v2(bracket_data)
             st.download_button(
                 label="EXPORT BRACKET PNG",
                 data=bracket_png_bytes,

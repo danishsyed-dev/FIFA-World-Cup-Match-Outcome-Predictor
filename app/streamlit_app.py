@@ -14,6 +14,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data_loader import load_all, load_elo, DATA_DIR
+import importlib
+import src.image_generator
+importlib.reload(src.image_generator)
 from src.image_generator import generate_matchup_png
 
 import streamlit as st
@@ -22,7 +25,8 @@ import numpy as np
 import plotly.graph_objects as go
 
 @st.cache_data(show_spinner=False)
-def get_cached_matchup_png(home_team, away_team, home_elo, away_elo, hw, dr, aw, predicted, confidence):
+def get_cached_matchup_png_v2(home_team, away_team, home_elo, away_elo, hw, dr, aw, predicted, confidence):
+    # force cache reload: v6
     return generate_matchup_png(home_team, away_team, home_elo, away_elo, hw, dr, aw, predicted, confidence)
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -702,7 +706,7 @@ def main():
                 unsafe_allow_html=True
             )
 
-        matchup_png_bytes = get_cached_matchup_png(
+        matchup_png_bytes = get_cached_matchup_png_v2(
             home_team=home_team,
             away_team=away_team,
             home_elo=home_elo,
