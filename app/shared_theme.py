@@ -171,16 +171,24 @@ div[data-testid="stSidebar"] label p {
     border-radius: 4px;
     margin-bottom: 0.75rem;
 }
-.tactical-title {
-    font-family: 'Outfit', sans-serif;
-    font-size: 2.2rem;
-    font-weight: 800;
-    color: var(--title-color);
-    letter-spacing: -0.02em;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.tactical-header h1, .tactical-title {
+    font-family: 'Outfit', sans-serif !important;
+    font-size: 2.2rem !important;
+    font-weight: 800 !important;
+    color: var(--title-color) !important;
+    letter-spacing: -0.02em !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1.2 !important;
+}
+.header-icon {
+    width: 36px !important;
+    height: 36px !important;
+    margin-right: 14px !important;
+    flex-shrink: 0 !important;
+    align-self: center !important;
 }
 .tactical-subtitle {
     font-family: 'Plus Jakarta Sans', sans-serif;

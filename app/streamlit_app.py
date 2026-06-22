@@ -422,23 +422,102 @@ def elo_comparison_chart(home_team, away_team, home_elo, away_elo):
 def main():
     # Tactical Header Badge & Title with Geometric SVG Soccer Ball
     st.markdown(
-        """
-        <div class="tactical-header">
-            <div class="telemetry-badge">MATCH DECISION TELEMETRY v1.2</div>
-            <h1 class="tactical-title">
-                <svg class="header-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 32px; height: 32px; vertical-align: middle; margin-right: 12px; margin-top: -4px;">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="m12 2-2 3h4Z"/>
-                    <path d="M12 22v-4"/>
-                    <path d="m2 12 5-1v2Z"/>
-                    <path d="m22 12-5 1v-2Z"/>
-                    <path d="m10 5 1 5-3 2v4l4 2 4-2v-4l-3-2 1-5"/>
-                </svg>
-                FIFA MATCH OUTCOME PREDICTOR
-            </h1>
-            <p class="tactical-subtitle">Data-driven machine learning models forecasting international fixtures</p>
-        </div>
-        """, 
+        """<div class="tactical-header">
+<div class="telemetry-badge">MATCH DECISION TELEMETRY v1.2</div>
+<h1 class="tactical-title">
+<svg class="header-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+<defs>
+<!-- 3D Spherical Radial Shadow -->
+<radialGradient id="sphereShadow" cx="35%" cy="30%" r="70%">
+<stop offset="0%" stop-color="#ffffff" />
+<stop offset="65%" stop-color="#f8fafc" />
+<stop offset="85%" stop-color="#e2e8f0" />
+<stop offset="100%" stop-color="#cbd5e1" />
+</radialGradient>
+
+<!-- Premium World Cup Trophy Gold Gradient -->
+<linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" stop-color="#fef08a" />
+<stop offset="40%" stop-color="#eab308" />
+<stop offset="75%" stop-color="#ca8a04" />
+<stop offset="100%" stop-color="#854d0e" />
+</linearGradient>
+
+<!-- Red Gradient for Canada Wave -->
+<linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" stop-color="#f87171" />
+<stop offset="100%" stop-color="#dc2626" />
+</linearGradient>
+
+<!-- Green Gradient for Mexico Wave -->
+<linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" stop-color="#34d399" />
+<stop offset="100%" stop-color="#059669" />
+</linearGradient>
+
+<!-- Blue Gradient for USA Wave -->
+<linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" stop-color="#60a5fa" />
+<stop offset="100%" stop-color="#2563eb" />
+</linearGradient>
+</defs>
+
+<!-- Ball Sphere Base -->
+<circle cx="50" cy="50" r="46" fill="url(#sphereShadow)" stroke="#94a3b8" stroke-width="1.2" />
+
+<!-- Aerodynamic Grooves & Seam Textures (Adidas Trionda signature debossing) -->
+<circle cx="50" cy="50" r="41" fill="none" stroke="#e2e8f0" stroke-width="0.8" stroke-dasharray="10,4,3,4" opacity="0.9" />
+<circle cx="50" cy="50" r="46" fill="none" stroke="#e2e8f0" stroke-width="0.5" opacity="0.7" />
+
+<!-- Subtle curved panels outline -->
+<path d="M 17 33 A 46 46 0 0 1 83 33" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="4,4" opacity="0.6" />
+<path d="M 17 67 A 46 46 0 0 0 83 67" fill="none" stroke="#cbd5e1" stroke-width="0.8" stroke-dasharray="4,4" opacity="0.6" />
+
+<!-- Canada Red Wave -->
+<path d="M 36.14 58.0 A 28 28 0 0 1 50.0 34.0 C 40.0 22.0, 28.0 18.0, 18.0 30.0 C 8.0 42.0, 18.0 54.0, 36.14 58.0 Z" fill="url(#redGrad)" stroke="url(#goldGrad)" stroke-width="1" stroke-linejoin="round" />
+
+<!-- USA Blue Wave -->
+<path d="M 50.0 34.0 A 28 28 0 0 1 63.86 58.0 C 79.25 55.34, 88.71 46.95, 83.32 32.29 C 77.93 17.63, 62.54 20.29, 50.0 34.0 Z" fill="url(#blueGrad)" stroke="url(#goldGrad)" stroke-width="1" stroke-linejoin="round" />
+
+<!-- Mexico Green Wave -->
+<path d="M 63.86 58.0 A 28 28 0 0 1 36.14 58.0 C 30.75 72.66, 33.29 85.05, 48.68 87.71 C 64.07 90.37, 69.46 75.71, 63.86 58.0 Z" fill="url(#greenGrad)" stroke="url(#goldGrad)" stroke-width="1" stroke-linejoin="round" />
+
+<!-- Central Core (Curved Reuleaux Gold Triangle) -->
+<path d="M 50.0 34.0 A 28 28 0 0 1 63.86 58.0 A 28 28 0 0 1 36.14 58.0 A 28 28 0 0 1 50.0 34.0 Z" fill="url(#goldGrad)" stroke="#1e293b" stroke-width="1.2" stroke-linejoin="round" />
+
+<!-- Inner Gold Core Details (Star/Ray design) -->
+<path d="M 50 34 L 50 42 M 63.86 58 L 56.93 54 M 36.14 58 L 43.07 54" fill="none" stroke="#854d0e" stroke-width="0.8" opacity="0.5" />
+
+<!-- Trophy Silhouette -->
+<g transform="translate(0, 1.5)">
+<rect x="47.5" y="52.0" width="5.0" height="0.8" rx="0.2" fill="#166534" />
+<rect x="47.0" y="52.8" width="6.0" height="0.8" rx="0.2" fill="url(#goldGrad)" />
+<rect x="47.5" y="53.6" width="5.0" height="0.8" rx="0.2" fill="#166534" />
+<path d="M 48.2 52.0 C 48.2 48.0, 46.8 45.0, 48.8 42.0 C 49.3 41.2, 50.7 41.2, 51.2 42.0 C 53.2 45.0, 51.8 48.0, 51.8 52.0 Z" fill="url(#goldGrad)" stroke="#854d0e" stroke-width="0.3" />
+<circle cx="50.0" cy="40.8" r="1.8" fill="url(#goldGrad)" stroke="#854d0e" stroke-width="0.3" />
+<circle cx="50.0" cy="40.8" r="1.4" fill="#fef08a" opacity="0.8" />
+</g>
+
+<!-- Canada Maple Leaf -->
+<g transform="translate(32.5, 38.0) scale(0.24)" opacity="0.95">
+<path d="M 0 -22 L 3 -11 L 11 -13 L 9 -4 L 18 -1 L 8 4 L 9 10 L 3 7 L 1.2 16 L -1.2 16 L -3 7 L -9 10 L -8 4 L -18 -1 L -9 -4 L -11 -13 L -3 -11 Z" fill="#ffffff" stroke="#854d0e" stroke-width="0.8" stroke-linejoin="round" />
+</g>
+
+<!-- USA Star -->
+<g transform="translate(67.5, 38.0) scale(0.24)" opacity="0.95">
+<path d="M 0 -20 L 5.5 -5 L 20 -5 L 8 4 L 13 18 L 0 9 L -13 18 L -8 4 L -20 -5 L -5.5 -5 Z" fill="#ffffff" stroke="#854d0e" stroke-width="0.8" stroke-linejoin="round" />
+</g>
+
+<!-- Mexico Eagle Head -->
+<g transform="translate(50.0, 71.0) scale(0.24)" opacity="0.95">
+<path d="M -15 12 C -12 2, -8 -12, 2 -14 C 8 -15, 14 -11, 18 -5 C 21 -2, 23 3, 18 7 C 14 10, 10 6, 8 3 C 5 1, 2 4, 0 7 C -4 11, -10 12, -15 12 Z" fill="#ffffff" stroke="#854d0e" stroke-width="0.8" stroke-linejoin="round" />
+<circle cx="3" cy="-4" r="1.5" fill="#854d0e" />
+</g>
+</svg>
+FIFA MATCH OUTCOME PREDICTOR
+</h1>
+<p class="tactical-subtitle">Data-driven machine learning models forecasting international fixtures</p>
+</div>""",
         unsafe_allow_html=True
     )
 
