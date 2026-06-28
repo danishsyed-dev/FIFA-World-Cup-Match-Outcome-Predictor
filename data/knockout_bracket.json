@@ -1,0 +1,266 @@
+{
+    "r32": [
+        {
+            "match_number": "Match 73",
+            "team1": "South Africa",
+            "team2": "Canada",
+            "date": "2026-06-29",
+            "time": "12:30 AM",
+            "game_id": "760486"
+        },
+        {
+            "match_number": "Match 74",
+            "team1": "Germany",
+            "team2": "Paraguay",
+            "date": "2026-06-30",
+            "time": "2:00 AM",
+            "game_id": "760489"
+        },
+        {
+            "match_number": "Match 75",
+            "team1": "Netherlands",
+            "team2": "Morocco",
+            "date": "2026-06-30",
+            "time": "6:30 AM",
+            "game_id": "760488"
+        },
+        {
+            "match_number": "Match 76",
+            "team1": "Brazil",
+            "team2": "Japan",
+            "date": "2026-06-29",
+            "time": "10:30 PM",
+            "game_id": "760487"
+        },
+        {
+            "match_number": "Match 77",
+            "team1": "France",
+            "team2": "Sweden",
+            "date": "2026-07-01",
+            "time": "2:30 AM",
+            "game_id": "760492"
+        },
+        {
+            "match_number": "Match 78",
+            "team1": "Ivory Coast",
+            "team2": "Norway",
+            "date": "2026-06-30",
+            "time": "10:30 PM",
+            "game_id": "760490"
+        },
+        {
+            "match_number": "Match 79",
+            "team1": "Mexico",
+            "team2": "Ecuador",
+            "date": "2026-07-01",
+            "time": "6:30 AM",
+            "game_id": "760491"
+        },
+        {
+            "match_number": "Match 80",
+            "team1": "England",
+            "team2": "Congo DR",
+            "date": "2026-07-01",
+            "time": "9:30 PM",
+            "game_id": "760495"
+        },
+        {
+            "match_number": "Match 81",
+            "team1": "USA",
+            "team2": "Bosnia-Herz",
+            "date": "2026-07-02",
+            "time": "5:30 AM",
+            "game_id": "760494"
+        },
+        {
+            "match_number": "Match 82",
+            "team1": "Belgium",
+            "team2": "Senegal",
+            "date": "2026-07-02",
+            "time": "1:30 AM",
+            "game_id": "760493"
+        },
+        {
+            "match_number": "Match 83",
+            "team1": "Portugal",
+            "team2": "Croatia",
+            "date": "2026-07-03",
+            "time": "4:30 AM",
+            "game_id": "760496"
+        },
+        {
+            "match_number": "Match 84",
+            "team1": "Spain",
+            "team2": "Austria",
+            "date": "2026-07-03",
+            "time": "12:30 AM",
+            "game_id": "760497"
+        },
+        {
+            "match_number": "Match 85",
+            "team1": "Switzerland",
+            "team2": "Algeria",
+            "date": "2026-07-03",
+            "time": "8:30 AM",
+            "game_id": "760498"
+        },
+        {
+            "match_number": "Match 86",
+            "team1": "Argentina",
+            "team2": "Cape Verde",
+            "date": "2026-07-04",
+            "time": "3:30 AM",
+            "game_id": "760500"
+        },
+        {
+            "match_number": "Match 87",
+            "team1": "Colombia",
+            "team2": "Ghana",
+            "date": "2026-07-04",
+            "time": "7:00 AM",
+            "game_id": "760501"
+        },
+        {
+            "match_number": "Match 88",
+            "team1": "Australia",
+            "team2": "Egypt",
+            "date": "2026-07-03",
+            "time": "11:30 PM",
+            "game_id": "760499"
+        }
+    ],
+    "r16": [
+        {
+            "match_number": "Match 89",
+            "team1": "RD32 W2",
+            "team2": "RD32 W5",
+            "date": "2026-07-05",
+            "time": "2:30 AM",
+            "game_id": "760503"
+        },
+        {
+            "match_number": "Match 90",
+            "team1": "RD32 W1",
+            "team2": "RD32 W3",
+            "date": "2026-07-04",
+            "time": "10:30 PM",
+            "game_id": "760502"
+        },
+        {
+            "match_number": "Match 91",
+            "team1": "RD32 W4",
+            "team2": "RD32 W6",
+            "date": "2026-07-06",
+            "time": "1:30 AM",
+            "game_id": "760504"
+        },
+        {
+            "match_number": "Match 92",
+            "team1": "RD32 W7",
+            "team2": "RD32 W8",
+            "date": "2026-07-06",
+            "time": "5:30 AM",
+            "game_id": "760505"
+        },
+        {
+            "match_number": "Match 93",
+            "team1": "RD32 W11",
+            "team2": "RD32 W12",
+            "date": "2026-07-07",
+            "time": "12:30 AM",
+            "game_id": "760506"
+        },
+        {
+            "match_number": "Match 94",
+            "team1": "RD32 W9",
+            "team2": "RD32 W10",
+            "date": "2026-07-07",
+            "time": "5:30 AM",
+            "game_id": "760507"
+        },
+        {
+            "match_number": "Match 95",
+            "team1": "RD32 W14",
+            "team2": "RD32 W16",
+            "date": "2026-07-07",
+            "time": "9:30 PM",
+            "game_id": "760509"
+        },
+        {
+            "match_number": "Match 96",
+            "team1": "RD32 W13",
+            "team2": "RD32 W15",
+            "date": "2026-07-08",
+            "time": "1:30 AM",
+            "game_id": "760508"
+        }
+    ],
+    "qf": [
+        {
+            "match_number": "Match 97",
+            "team1": "RD16 W1",
+            "team2": "RD16 W2",
+            "date": "2026-07-10",
+            "time": "1:30 AM",
+            "game_id": "760510"
+        },
+        {
+            "match_number": "Match 98",
+            "team1": "RD16 W5",
+            "team2": "RD16 W6",
+            "date": "2026-07-11",
+            "time": "12:30 AM",
+            "game_id": "760511"
+        },
+        {
+            "match_number": "Match 99",
+            "team1": "RD16 W3",
+            "team2": "RD16 W4",
+            "date": "2026-07-12",
+            "time": "2:30 AM",
+            "game_id": "760512"
+        },
+        {
+            "match_number": "Match 100",
+            "team1": "RD16 W7",
+            "team2": "RD16 W8",
+            "date": "2026-07-12",
+            "time": "6:30 AM",
+            "game_id": "760513"
+        }
+    ],
+    "sf": [
+        {
+            "match_number": "Match 101",
+            "team1": "QF W1",
+            "team2": "QF W2",
+            "date": "2026-07-15",
+            "time": "12:30 AM",
+            "game_id": "760514"
+        },
+        {
+            "match_number": "Match 102",
+            "team1": "QF W3",
+            "team2": "QF W4",
+            "date": "2026-07-16",
+            "time": "12:30 AM",
+            "game_id": "760515"
+        }
+    ],
+    "third_place": {
+        "match_number": "Match 103",
+        "team1": "SF L1",
+        "team2": "SF L2",
+        "date": "2026-07-19",
+        "time": "2:30 AM",
+        "game_id": "760516"
+    },
+    "final": {
+        "match_number": "Match 104",
+        "team1": "SF W1",
+        "team2": "SF W2",
+        "date": "2026-07-20",
+        "time": "12:30 AM",
+        "game_id": "760517"
+    }
+}
