@@ -22,6 +22,7 @@ importlib.reload(src.image_generator)
 import app.shared_theme
 importlib.reload(app.shared_theme)
 import src.group_simulator
+importlib.reload(src.group_simulator)
 
 import streamlit as st
 import pandas as pd

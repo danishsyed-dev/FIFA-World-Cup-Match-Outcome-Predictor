@@ -795,23 +795,9 @@ def main():
             "Correct", "Incorrect"
         )
 
-    # ── Sidebar Filters ───────────────────────────────────────────────────────
+    # ── Sidebar ───────────────────────────────────────────────────────────────
     with st.sidebar:
-        st.markdown('<div class="sidebar-header">FILTERS</div>', unsafe_allow_html=True)
-        
-        # Group stage filter / Knockout stage option
-        group_options = ["ALL MATCHES", "KNOCKOUT STAGE"] + [f"GROUP {g}" for g in WC2026_GROUPS.keys()]
-        selected_group = st.selectbox("STAGE & GROUP FILTER", group_options)
-        
-        # Status filter
-        status_options = ["ALL MATCHES", "PLAYED", "SCHEDULED"]
-        selected_status = st.selectbox("STATUS FILTER", status_options)
-        
-        # Search by team
-        search_team = st.text_input("SEARCH TEAM", "").strip()
-
         # Reload Predictions
-        st.markdown("---")
         if st.button("RELOAD PREDICTIONS", use_container_width=True):
             st.cache_data.clear()
             st.cache_resource.clear()
@@ -819,35 +805,8 @@ def main():
                 del st.session_state.wc_predictions_df
             st.rerun()
 
-    # Apply filters to match list
+    # Base match list is all predictions
     filtered_df = df_preds.copy()
-    
-    # Stage & Group Filter logic
-    if selected_group == "KNOCKOUT STAGE":
-        filtered_df = filtered_df[filtered_df['stage'] == "Knockout"]
-    elif selected_group != "ALL MATCHES":
-        # Group stage only
-        group_letter = selected_group.replace("GROUP ", "")
-        allowed_teams = WC2026_GROUPS[group_letter]
-        filtered_df = filtered_df[
-            (filtered_df['stage'] == "Group") & (
-                filtered_df['home_team'].apply(clean_name_for_mapping).isin(allowed_teams) |
-                filtered_df['away_team'].apply(clean_name_for_mapping).isin(allowed_teams)
-            )
-        ]
-        
-    # Status filter
-    if selected_status == "PLAYED":
-        filtered_df = filtered_df[filtered_df['home_score'].notna()]
-    elif selected_status == "SCHEDULED":
-        filtered_df = filtered_df[filtered_df['home_score'].isna()]
-        
-    # Team search
-    if search_team:
-        filtered_df = filtered_df[
-            filtered_df['home_team'].str.contains(search_team, case=False, na=False) |
-            filtered_df['away_team'].str.contains(search_team, case=False, na=False)
-        ]
 
     # Sort matches chronologically
     filtered_df = filtered_df.sort_values(by=['date', 'home_team'])

@@ -103,7 +103,7 @@ def simulate_match_score(elo_a: float, elo_b: float, rng: np.random.Generator) -
     return (int(goals_a), int(goals_b))
 
 
-def load_real_played_matches() -> Dict[Tuple[str, str], Tuple[int, int]]:
+def load_real_played_matches(knockout: bool = False) -> Dict[Tuple[str, str], Tuple[int, int]]:
     """
     Load all played FIFA World Cup 2026 matches from results.csv.
     Returns a dictionary mapping (team_a, team_b) -> (goals_a, goals_b).
@@ -131,12 +131,16 @@ def load_real_played_matches() -> Dict[Tuple[str, str], Tuple[int, int]]:
         return {}
         
     # Filter for played 2026 World Cup matches
-    wc_matches = df[
+    df_wc = df[
         (df["tournament"] == "FIFA World Cup") & 
         (df["date"].astype(str).str.startswith("2026")) &
         df["home_score"].notna() &
         df["away_score"].notna()
     ]
+    if knockout:
+        wc_matches = df_wc[df_wc["date"] >= "2026-06-29"]
+    else:
+        wc_matches = df_wc[df_wc["date"] < "2026-06-29"]
     
     def clean_name_for_simulator(team_name: str) -> str:
         t_clean = team_name.strip()
@@ -162,6 +166,51 @@ def load_real_played_matches() -> Dict[Tuple[str, str], Tuple[int, int]]:
             continue
             
     return played
+
+
+def load_real_shootouts() -> Dict[Tuple[str, str], str]:
+    from pathlib import Path
+    
+    possible_paths = [
+        Path(__file__).resolve().parent.parent / "data" / "shootouts.csv",
+        Path("data/shootouts.csv"),
+        Path("../data/shootouts.csv"),
+    ]
+    csv_path = None
+    for p in possible_paths:
+        if p.exists():
+            csv_path = p
+            break
+            
+    if not csv_path:
+        return {}
+        
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception:
+        return {}
+        
+    def clean_name_for_simulator(team_name: str) -> str:
+        t_clean = team_name.strip()
+        if "Cura" in t_clean:
+            return "Curacao"
+        elif t_clean == "United States":
+            return "USA"
+        elif t_clean == "Czech Republic":
+            return "Czechia"
+        return t_clean
+
+    shootouts = {}
+    for _, row in df.iterrows():
+        try:
+            ht = clean_name_for_simulator(str(row["home_team"]))
+            at = clean_name_for_simulator(str(row["away_team"]))
+            winner = clean_name_for_simulator(str(row["winner"]))
+            shootouts[(ht, at)] = winner
+            shootouts[(at, ht)] = winner
+        except Exception:
+            continue
+    return shootouts
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -368,11 +417,36 @@ def simulate_knockout_match(
     team_b: str,
     elo_ratings: Dict[str, float],
     rng: np.random.Generator,
+    played_matches: Dict[Tuple[str, str], Tuple[int, int]] = None,
+    real_shootouts: Dict[Tuple[str, str], str] = None,
 ) -> dict:
     """
     Simulates a single knockout match. If it's a draw after 90 mins,
     it simulates extra time and, if needed, a penalty shootout (50/50 split).
+    Supports looking up real-world scores if played_matches is provided.
     """
+    if played_matches and (team_a, team_b) in played_matches:
+        goals_a, goals_b = played_matches[(team_a, team_b)]
+        if goals_a > goals_b:
+            winner = team_a
+        elif goals_a < goals_b:
+            winner = team_b
+        else:
+            winner = None
+            if real_shootouts:
+                winner = real_shootouts.get((team_a, team_b))
+            if not winner:
+                winner = team_a if rng.random() < 0.5 else team_b
+        return {
+            "team_a": team_a,
+            "team_b": team_b,
+            "score_a": goals_a,
+            "score_b": goals_b,
+            "winner": winner,
+            "extra_time": goals_a == goals_b,
+            "penalties": goals_a == goals_b,
+        }
+
     elo_a = elo_ratings.get(team_a, FALLBACK_ELO.get(team_a, 1500))
     elo_b = elo_ratings.get(team_b, FALLBACK_ELO.get(team_b, 1500))
     
@@ -463,74 +537,120 @@ def allocate_third_places(third_places: List[dict]) -> Dict[str, dict]:
 def simulate_single_tournament(
     elo_ratings: Dict[str, float],
     rng: np.random.Generator,
-    played_matches: Dict[Tuple[str, str], Tuple[int, int]] = None,
+    group_played_matches: Dict[Tuple[str, str], Tuple[int, int]] = None,
+    knockout_played_matches: Dict[Tuple[str, str], Tuple[int, int]] = None,
+    real_shootouts: Dict[Tuple[str, str], str] = None,
 ) -> dict:
     """
     Simulates one full World Cup 2026 (Group Stage + 32-team Knockout Stage).
     Returns the furthest stage reached by each team and the full bracket results.
     """
-    if played_matches is None:
-        played_matches = load_real_played_matches()
-        
-    # 1. Simulate Group Stage
-    group_standings = {}
-    third_placed = []
-    
-    for group_name, teams in WC2026_GROUPS.items():
-        standings = _simulate_group_once(teams, elo_ratings, rng, played_matches)
-        group_standings[group_name] = standings
-        for entry in standings:
-            if entry["position"] == 3:
-                third_placed.append({
-                    "team": entry["team"],
-                    "group": group_name,
-                    "pts": entry["pts"],
-                    "gd": entry["gd"],
-                    "gf": entry["gf"],
-                })
-                
-    # Rank 3rd place teams
-    third_placed = sorted(
-        third_placed,
-        key=lambda x: (x["pts"], x["gd"], x["gf"], rng.random()),
-        reverse=True,
-    )
-    
-    third_place_assignments = allocate_third_places(third_placed)
-    
-    # Helper to resolve qualifiers
-    def get_team(rank_type: str) -> str:
-        if rank_type.startswith("3_"):
-            slot = rank_type[2:]
-            return third_place_assignments[slot]["team"]
-        pos = int(rank_type[0])
-        group = rank_type[1]
-        return group_standings[group][pos - 1]["team"]
+    if group_played_matches is None:
+        group_played_matches = load_real_played_matches(knockout=False)
+    if knockout_played_matches is None:
+        knockout_played_matches = load_real_played_matches(knockout=True)
+    if real_shootouts is None:
+        real_shootouts = load_real_shootouts()
 
-    # 2. Round of 32 Pairings (predetermined by FIFA)
-    r32_pairings = [
-        ("2A", "2B"),       # Match 1
-        ("1C", "2F"),       # Match 2
-        ("1E", "3_1E"),     # Match 3
-        ("1F", "2C"),       # Match 4
-        ("2E", "2I"),       # Match 5
-        ("1I", "3_1I"),     # Match 6
-        ("1A", "3_1A"),     # Match 7
-        ("1L", "3_1L"),     # Match 8
-        ("1G", "3_1G"),     # Match 9
-        ("1D", "3_1D"),     # Match 10
-        ("1H", "2J"),       # Match 11
-        ("2K", "2L"),       # Match 12
-        ("1B", "3_1B"),     # Match 13
-        ("2D", "2G"),       # Match 14
-        ("1J", "2H"),       # Match 15
-        ("1K", "3_1K"),     # Match 16
+    import json
+    from pathlib import Path
+    possible_json_paths = [
+        Path(__file__).resolve().parent.parent / "data" / "knockout_bracket.json",
+        Path("data/knockout_bracket.json"),
+        Path("../data/knockout_bracket.json"),
     ]
+    json_path = None
+    for p in possible_json_paths:
+        if p.exists():
+            json_path = p
+            break
     
-    r32_matches = []
-    for pair in r32_pairings:
-        res = simulate_knockout_match(get_team(pair[0]), get_team(pair[1]), elo_ratings, rng)
-        r32_matches.append(res)
+    bracket_struct = None
+    if json_path:
+        try:
+            with open(json_path, 'r') as f:
+                bracket_struct = json.load(f)
+        except Exception:
+            pass
+
+    group_stage_completed = (group_played_matches is not None and len(group_played_matches) >= 144) and (bracket_struct is not None)
+
+    if group_stage_completed:
+        # Use real-world R32 matchups directly
+        def normalize_name(n):
+            n_strip = str(n).strip()
+            if n_strip == "Congo DR":
+                return "DR Congo"
+            elif n_strip == "Bosnia-Herz":
+                return "Bosnia and Herzegovina"
+            return n_strip
+            
+        r32_matches = []
+        for m in bracket_struct["r32"]:
+            t1 = normalize_name(m["team1"])
+            t2 = normalize_name(m["team2"])
+            res = simulate_knockout_match(t1, t2, elo_ratings, rng, knockout_played_matches, real_shootouts)
+            r32_matches.append(res)
+    else:
+        # 1. Simulate Group Stage
+        group_standings = {}
+        third_placed = []
+        
+        for group_name, teams in WC2026_GROUPS.items():
+            standings = _simulate_group_once(teams, elo_ratings, rng, group_played_matches)
+            group_standings[group_name] = standings
+            for entry in standings:
+                if entry["position"] == 3:
+                    third_placed.append({
+                        "team": entry["team"],
+                        "group": group_name,
+                        "pts": entry["pts"],
+                        "gd": entry["gd"],
+                        "gf": entry["gf"],
+                    })
+                    
+        # Rank 3rd place teams
+        third_placed = sorted(
+            third_placed,
+            key=lambda x: (x["pts"], x["gd"], x["gf"], rng.random()),
+            reverse=True,
+        )
+        
+        third_place_assignments = allocate_third_places(third_placed)
+        
+        # Helper to resolve qualifiers
+        def get_team(rank_type: str) -> str:
+            if rank_type.startswith("3_"):
+                slot = rank_type[2:]
+                return third_place_assignments[slot]["team"]
+            pos = int(rank_type[0])
+            group = rank_type[1]
+            return group_standings[group][pos - 1]["team"]
+
+        # 2. Round of 32 Pairings (predetermined by FIFA)
+        r32_pairings = [
+            ("2A", "2B"),       # Match 1
+            ("1C", "2F"),       # Match 2
+            ("1E", "3_1E"),     # Match 3
+            ("1F", "2C"),       # Match 4
+            ("2E", "2I"),       # Match 5
+            ("1I", "3_1I"),     # Match 6
+            ("1A", "3_1A"),     # Match 7
+            ("1L", "3_1L"),     # Match 8
+            ("1G", "3_1G"),     # Match 9
+            ("1D", "3_1D"),     # Match 10
+            ("1H", "2J"),       # Match 11
+            ("2K", "2L"),       # Match 12
+            ("1B", "3_1B"),     # Match 13
+            ("2D", "2G"),       # Match 14
+            ("1J", "2H"),       # Match 15
+            ("1K", "3_1K"),     # Match 16
+        ]
+        
+        r32_matches = []
+        for pair in r32_pairings:
+            res = simulate_knockout_match(get_team(pair[0]), get_team(pair[1]), elo_ratings, rng, knockout_played_matches, real_shootouts)
+            r32_matches.append(res)
         
     # 3. Round of 16
     r16_pairings = [
@@ -546,7 +666,7 @@ def simulate_single_tournament(
     
     r16_matches = []
     for pair in r16_pairings:
-        res = simulate_knockout_match(pair[0], pair[1], elo_ratings, rng)
+        res = simulate_knockout_match(pair[0], pair[1], elo_ratings, rng, knockout_played_matches, real_shootouts)
         r16_matches.append(res)
         
     # 4. Quarterfinals
@@ -559,7 +679,7 @@ def simulate_single_tournament(
     
     qf_matches = []
     for pair in qf_pairings:
-        res = simulate_knockout_match(pair[0], pair[1], elo_ratings, rng)
+        res = simulate_knockout_match(pair[0], pair[1], elo_ratings, rng, knockout_played_matches, real_shootouts)
         qf_matches.append(res)
         
     # 5. Semifinals
@@ -570,11 +690,11 @@ def simulate_single_tournament(
     
     sf_matches = []
     for pair in sf_pairings:
-        res = simulate_knockout_match(pair[0], pair[1], elo_ratings, rng)
+        res = simulate_knockout_match(pair[0], pair[1], elo_ratings, rng, knockout_played_matches, real_shootouts)
         sf_matches.append(res)
         
     # 6. Final
-    final_match = simulate_knockout_match(sf_matches[0]["winner"], sf_matches[1]["winner"], elo_ratings, rng)
+    final_match = simulate_knockout_match(sf_matches[0]["winner"], sf_matches[1]["winner"], elo_ratings, rng, knockout_played_matches, real_shootouts)
     
     # 7. Collect furthest round
     furthest = {}
@@ -631,12 +751,14 @@ def simulate_full_tournament_monte_carlo(
     group_stage_stats = {t: {"top2": 0, "pts": 0, "gd": 0} for t in all_teams}
     position_counts = {t: {1: 0, 2: 0, 3: 0, 4: 0} for t in all_teams}
 
-    played_matches = load_real_played_matches()
+    group_played_matches = load_real_played_matches(knockout=False)
+    knockout_played_matches = load_real_played_matches(knockout=True)
+    real_shootouts = load_real_shootouts()
 
     for _ in range(n_sims):
         # 1. Group Stage Standing Tracking
         for group_name, teams in WC2026_GROUPS.items():
-            standings = _simulate_group_once(teams, elo_ratings, rng, played_matches)
+            standings = _simulate_group_once(teams, elo_ratings, rng, group_played_matches)
             for entry in standings:
                 t = entry["team"]
                 pos = entry["position"]
@@ -647,7 +769,7 @@ def simulate_full_tournament_monte_carlo(
                     group_stage_stats[t]["top2"] += 1
                     
         # 2. Knockout Progression Tracking
-        sim_res = simulate_single_tournament(elo_ratings, rng, played_matches)
+        sim_res = simulate_single_tournament(elo_ratings, rng, group_played_matches, knockout_played_matches, real_shootouts)
         furthest = sim_res["furthest"]
         for t, stage in furthest.items():
             if stage == "Champion":
