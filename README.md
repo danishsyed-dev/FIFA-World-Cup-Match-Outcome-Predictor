@@ -62,6 +62,7 @@ FIFA World Cup Match Outcome Predictor/
 │   ├── goalscorers.csv        ← Historical match goalscorers
 │   ├── former_names.csv       ← Historical geopolitical team name mappings
 │   ├── elo.csv                ← Chronological ELO ratings (calculated or user-edited)
+│   ├── knockout_bracket.json  ← Structure and schedule of the 2026 World Cup knockout stage
 │   └── README.md              ← Dataset descriptions and source details
 ├── src/
 │   ├── __init__.py            
@@ -84,7 +85,8 @@ FIFA World Cup Match Outcome Predictor/
 │   ├── streamlit_app.py       ← Match outcome predictor UI page
 │   ├── shared_theme.py        ← Tactical dark-mode CSS theme & flag CDN utility
 │   └── pages/
-│       └── 1_Group_Stage_Simulator.py ← Multi-tab tournament simulation UI
+│       ├── 1_Group_Stage_Simulator.py ← Multi-tab tournament simulation UI
+│       └── 2_WC_2026_Live_Results.py  ← Real-time results tracker and bracket display
 ├── notebooks/
 │   └── analysis.ipynb         ← Exploratory data analysis notebook
 ├── requirements.txt           ← Python virtual environment dependencies

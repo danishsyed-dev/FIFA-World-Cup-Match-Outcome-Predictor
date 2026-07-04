@@ -150,6 +150,10 @@ def load_real_played_matches(knockout: bool = False) -> Dict[Tuple[str, str], Tu
             return "USA"
         elif t_clean == "Czech Republic":
             return "Czechia"
+        elif t_clean == "Congo DR" or t_clean == "DR Congo":
+            return "DR Congo"
+        elif t_clean == "Bosnia-Herz" or t_clean == "Bosnia and Herzegovina":
+            return "Bosnia and Herzegovina"
         return t_clean
     
     played = {}
@@ -198,6 +202,10 @@ def load_real_shootouts() -> Dict[Tuple[str, str], str]:
             return "USA"
         elif t_clean == "Czech Republic":
             return "Czechia"
+        elif t_clean == "Congo DR" or t_clean == "DR Congo":
+            return "DR Congo"
+        elif t_clean == "Bosnia-Herz" or t_clean == "Bosnia and Herzegovina":
+            return "Bosnia and Herzegovina"
         return t_clean
 
     shootouts = {}

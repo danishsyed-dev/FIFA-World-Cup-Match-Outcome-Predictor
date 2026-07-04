@@ -5,10 +5,14 @@ __pycache__/
 
 # Models (large binary files)
 models/*.pkl
+!models/best_model.pkl
+!models/feature_cols.pkl
 models/*.joblib
 
 # Data files
 data/*.csv
+!data/results.csv
+!data/shootouts.csv
 data/*.zip
 data/*.gz
 

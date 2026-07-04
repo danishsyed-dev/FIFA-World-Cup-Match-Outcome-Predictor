@@ -33,7 +33,7 @@ from app.shared_theme import inject_theme, get_flag_url
 inject_theme()
 
 # ── Simulator mappings & imports ──────────────────────────────────────────────
-from src.group_simulator import WC2026_GROUPS
+from src.group_simulator import WC2026_GROUPS, load_real_played_matches, load_real_shootouts
 
 # Custom styles for the match tracker and bracket
 st.markdown("""
@@ -337,11 +337,19 @@ st.markdown("""
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.bracket-team-prob {
+.bracket-team-prob, .bracket-team-score {
     font-family: 'Space Grotesk', sans-serif;
     font-size: 0.75rem;
     color: var(--text-muted);
     font-weight: 600;
+}
+.bracket-team-score {
+    color: var(--title-color);
+    font-weight: 800;
+    margin-left: auto;
+}
+.bracket-team.winner .bracket-team-score {
+    color: #10b981;
 }
 .bracket-probs-bar {
     display: flex;
@@ -418,15 +426,19 @@ def load_knockout_bracket_structure():
     with open('data/knockout_bracket.json', 'r', encoding='utf-8') as f:
         return json.load(f)
 
-# Helper for name cleaning (to map flags and groups correctly)
 def clean_name_for_mapping(team_name):
-    if "Cura" in team_name:
+    t_clean = str(team_name).strip()
+    if "Cura" in t_clean:
         return "Curacao"
-    elif team_name == "United States":
+    elif t_clean == "United States":
         return "USA"
-    elif team_name == "Czech Republic":
+    elif t_clean == "Czech Republic":
         return "Czechia"
-    return team_name
+    elif t_clean == "Congo DR" or t_clean == "DR Congo":
+        return "DR Congo"
+    elif t_clean == "Bosnia-Herz" or t_clean == "Bosnia and Herzegovina":
+        return "Bosnia and Herzegovina"
+    return t_clean
 
 def is_placeholder(team_name):
     name = str(team_name).strip()
@@ -436,113 +448,274 @@ def is_placeholder(team_name):
     return any(name.startswith(p) for p in prefixes)
 
 # ELO-based bracket path progression forecasting
-def compute_bracket_forecast(bracket_structure, predictor):
+def resolve_bracket_state(bracket_structure, predictor, forecast_mode=True):
+    # Load actual played knockout results
+    knockout_played = load_real_played_matches(knockout=True)
+    real_shootouts = load_real_shootouts()
+    
     bracket = copy.deepcopy(bracket_structure)
     
+    # Helper to clean names
+    def clean(name):
+        return clean_name_for_mapping(name)
+
+    # Dictionary of match winners resolved so far
+    winners = {}
+    losers = {}
+    
     # 1. Round of 32
-    r32_winners = {}
     for m in bracket["r32"]:
-        t1, t2 = m["team1"], m["team2"]
-        pred = predictor.predict(t1, t2, neutral=True, tournament="FIFA World Cup", match_date=m["date"])
-        winner = t1 if pred["home_win_prob"] >= pred["away_win_prob"] else t2
-        m["winner"] = winner
-        m["prob1"] = pred["home_win_prob"]
-        m["prob2"] = pred["away_win_prob"]
-        m["prob_draw"] = pred["draw_prob"]
-        m["predicted_outcome"] = pred["predicted_outcome"]
-        r32_winners[m["match_number"]] = winner
+        t1 = m["team1"]
+        t2 = m["team2"]
+        m["team1_actual"] = t1
+        m["team2_actual"] = t2
         
+        # Check if played in real life
+        res = knockout_played.get((clean(t1), clean(t2))) or knockout_played.get((clean(t2), clean(t1)))
+        if res is not None:
+            hs, as_ = res
+            m["home_score_actual"] = hs
+            m["away_score_actual"] = as_
+            if hs > as_:
+                winner = t1
+            elif as_ > hs:
+                winner = t2
+            else:
+                sho_win = real_shootouts.get((clean(t1), clean(t2))) or real_shootouts.get((clean(t2), clean(t1)))
+                winner = sho_win if sho_win else t1
+            loser = t2 if winner == t1 else t1
+        else:
+            if forecast_mode:
+                pred = predictor.predict(t1, t2, neutral=True, tournament="FIFA World Cup", match_date=m["date"])
+                winner = t1 if pred["home_win_prob"] >= pred["away_win_prob"] else t2
+                m["prob1"] = pred["home_win_prob"]
+                m["prob2"] = pred["away_win_prob"]
+                m["prob_draw"] = pred["draw_prob"]
+                m["predicted_outcome"] = pred["predicted_outcome"]
+                loser = t2 if winner == t1 else t1
+            else:
+                winner = "TBD"
+                loser = "TBD"
+        m["winner"] = winner
+        winners[m["match_number"]] = winner
+        losers[m["match_number"]] = loser
+
+    # Helper to resolve slot labels
     def get_rd32_winner(label):
-        idx = int(label.replace("RD32 W", ""))
-        match_num = f"Match {72 + idx}"
-        return r32_winners.get(match_num, label)
+        if is_placeholder(label):
+            idx = int(label.replace("RD32 W", ""))
+            match_num = f"Match {72 + idx}"
+            return winners.get(match_num, label)
+        return label
 
     # 2. Round of 16
-    r16_winners = {}
     for m in bracket["r16"]:
         t1 = get_rd32_winner(m["team1"])
         t2 = get_rd32_winner(m["team2"])
         m["team1_actual"] = t1
         m["team2_actual"] = t2
-        pred = predictor.predict(t1, t2, neutral=True, tournament="FIFA World Cup", match_date=m["date"])
-        winner = t1 if pred["home_win_prob"] >= pred["away_win_prob"] else t2
+        
+        if is_placeholder(t1) or is_placeholder(t2) or t1 == "TBD" or t2 == "TBD":
+            m["winner"] = "TBD"
+            winners[m["match_number"]] = "TBD"
+            losers[m["match_number"]] = "TBD"
+            continue
+            
+        res = knockout_played.get((clean(t1), clean(t2))) or knockout_played.get((clean(t2), clean(t1)))
+        if res is not None:
+            hs, as_ = res
+            m["home_score_actual"] = hs
+            m["away_score_actual"] = as_
+            if hs > as_:
+                winner = t1
+            elif as_ > hs:
+                winner = t2
+            else:
+                sho_win = real_shootouts.get((clean(t1), clean(t2))) or real_shootouts.get((clean(t2), clean(t1)))
+                winner = sho_win if sho_win else t1
+            loser = t2 if winner == t1 else t1
+        else:
+            if forecast_mode:
+                pred = predictor.predict(t1, t2, neutral=True, tournament="FIFA World Cup", match_date=m["date"])
+                winner = t1 if pred["home_win_prob"] >= pred["away_win_prob"] else t2
+                m["prob1"] = pred["home_win_prob"]
+                m["prob2"] = pred["away_win_prob"]
+                m["prob_draw"] = pred["draw_prob"]
+                m["predicted_outcome"] = pred["predicted_outcome"]
+                loser = t2 if winner == t1 else t1
+            else:
+                winner = "TBD"
+                loser = "TBD"
         m["winner"] = winner
-        m["prob1"] = pred["home_win_prob"]
-        m["prob2"] = pred["away_win_prob"]
-        m["prob_draw"] = pred["draw_prob"]
-        m["predicted_outcome"] = pred["predicted_outcome"]
-        r16_winners[m["match_number"]] = winner
+        winners[m["match_number"]] = winner
+        losers[m["match_number"]] = loser
 
     def get_rd16_winner(label):
-        idx = int(label.replace("RD16 W", ""))
-        match_num = f"Match {88 + idx}"
-        return r16_winners.get(match_num, label)
+        if is_placeholder(label):
+            idx = int(label.replace("RD16 W", ""))
+            match_num = f"Match {88 + idx}"
+            return winners.get(match_num, label)
+        return label
 
     # 3. Quarterfinals
-    qf_winners = {}
     for m in bracket["qf"]:
         t1 = get_rd16_winner(m["team1"])
         t2 = get_rd16_winner(m["team2"])
         m["team1_actual"] = t1
         m["team2_actual"] = t2
-        pred = predictor.predict(t1, t2, neutral=True, tournament="FIFA World Cup", match_date=m["date"])
-        winner = t1 if pred["home_win_prob"] >= pred["away_win_prob"] else t2
+        
+        if is_placeholder(t1) or is_placeholder(t2) or t1 == "TBD" or t2 == "TBD":
+            m["winner"] = "TBD"
+            winners[m["match_number"]] = "TBD"
+            losers[m["match_number"]] = "TBD"
+            continue
+            
+        res = knockout_played.get((clean(t1), clean(t2))) or knockout_played.get((clean(t2), clean(t1)))
+        if res is not None:
+            hs, as_ = res
+            m["home_score_actual"] = hs
+            m["away_score_actual"] = as_
+            if hs > as_:
+                winner = t1
+            elif as_ > hs:
+                winner = t2
+            else:
+                sho_win = real_shootouts.get((clean(t1), clean(t2))) or real_shootouts.get((clean(t2), clean(t1)))
+                winner = sho_win if sho_win else t1
+            loser = t2 if winner == t1 else t1
+        else:
+            if forecast_mode:
+                pred = predictor.predict(t1, t2, neutral=True, tournament="FIFA World Cup", match_date=m["date"])
+                winner = t1 if pred["home_win_prob"] >= pred["away_win_prob"] else t2
+                m["prob1"] = pred["home_win_prob"]
+                m["prob2"] = pred["away_win_prob"]
+                m["prob_draw"] = pred["draw_prob"]
+                m["predicted_outcome"] = pred["predicted_outcome"]
+                loser = t2 if winner == t1 else t1
+            else:
+                winner = "TBD"
+                loser = "TBD"
         m["winner"] = winner
-        m["prob1"] = pred["home_win_prob"]
-        m["prob2"] = pred["away_win_prob"]
-        m["prob_draw"] = pred["draw_prob"]
-        m["predicted_outcome"] = pred["predicted_outcome"]
-        qf_winners[m["match_number"]] = winner
+        winners[m["match_number"]] = winner
+        losers[m["match_number"]] = loser
 
     def get_qf_winner(label):
-        idx = int(label.replace("QF W", ""))
-        match_num = f"Match {96 + idx}"
-        return qf_winners.get(match_num, label)
+        if is_placeholder(label):
+            idx = int(label.replace("QF W", ""))
+            match_num = f"Match {96 + idx}"
+            return winners.get(match_num, label)
+        return label
 
     # 4. Semifinals
-    sf_winners = {}
-    sf_losers = {}
     for m in bracket["sf"]:
         t1 = get_qf_winner(m["team1"])
         t2 = get_qf_winner(m["team2"])
         m["team1_actual"] = t1
         m["team2_actual"] = t2
-        pred = predictor.predict(t1, t2, neutral=True, tournament="FIFA World Cup", match_date=m["date"])
-        winner = t1 if pred["home_win_prob"] >= pred["away_win_prob"] else t2
-        loser = t2 if winner == t1 else t1
+        
+        if is_placeholder(t1) or is_placeholder(t2) or t1 == "TBD" or t2 == "TBD":
+            m["winner"] = "TBD"
+            m["loser"] = "TBD"
+            winners[m["match_number"]] = "TBD"
+            losers[m["match_number"]] = "TBD"
+            continue
+            
+        res = knockout_played.get((clean(t1), clean(t2))) or knockout_played.get((clean(t2), clean(t1)))
+        if res is not None:
+            hs, as_ = res
+            m["home_score_actual"] = hs
+            m["away_score_actual"] = as_
+            if hs > as_:
+                winner = t1
+            elif as_ > hs:
+                winner = t2
+            else:
+                sho_win = real_shootouts.get((clean(t1), clean(t2))) or real_shootouts.get((clean(t2), clean(t1)))
+                winner = sho_win if sho_win else t1
+            loser = t2 if winner == t1 else t1
+        else:
+            if forecast_mode:
+                pred = predictor.predict(t1, t2, neutral=True, tournament="FIFA World Cup", match_date=m["date"])
+                winner = t1 if pred["home_win_prob"] >= pred["away_win_prob"] else t2
+                m["prob1"] = pred["home_win_prob"]
+                m["prob2"] = pred["away_win_prob"]
+                m["prob_draw"] = pred["draw_prob"]
+                m["predicted_outcome"] = pred["predicted_outcome"]
+                loser = t2 if winner == t1 else t1
+            else:
+                winner = "TBD"
+                loser = "TBD"
         m["winner"] = winner
         m["loser"] = loser
-        m["prob1"] = pred["home_win_prob"]
-        m["prob2"] = pred["away_win_prob"]
-        m["prob_draw"] = pred["draw_prob"]
-        m["predicted_outcome"] = pred["predicted_outcome"]
-        sf_winners[m["match_number"]] = winner
-        sf_losers[m["match_number"]] = loser
+        winners[m["match_number"]] = winner
+        losers[m["match_number"]] = loser
 
     # 5. Third Place and Final
-    t1_3rd = sf_losers.get("Match 101", "SF L1")
-    t2_3rd = sf_losers.get("Match 102", "SF L2")
+    t1_3rd = losers.get("Match 101", "SF L1")
+    t2_3rd = losers.get("Match 102", "SF L2")
     m_3rd = bracket["third_place"]
     m_3rd["team1_actual"] = t1_3rd
     m_3rd["team2_actual"] = t2_3rd
-    pred_3rd = predictor.predict(t1_3rd, t2_3rd, neutral=True, tournament="FIFA World Cup", match_date=m_3rd["date"])
-    m_3rd["winner"] = t1_3rd if pred_3rd["home_win_prob"] >= pred_3rd["away_win_prob"] else t2_3rd
-    m_3rd["prob1"] = pred_3rd["home_win_prob"]
-    m_3rd["prob2"] = pred_3rd["away_win_prob"]
-    m_3rd["prob_draw"] = pred_3rd["draw_prob"]
-    m_3rd["predicted_outcome"] = pred_3rd["predicted_outcome"]
+    
+    if is_placeholder(t1_3rd) or is_placeholder(t2_3rd) or t1_3rd == "TBD" or t2_3rd == "TBD":
+        m_3rd["winner"] = "TBD"
+    else:
+        res = knockout_played.get((clean(t1_3rd), clean(t2_3rd))) or knockout_played.get((clean(t2_3rd), clean(t1_3rd)))
+        if res is not None:
+            hs, as_ = res
+            m_3rd["home_score_actual"] = hs
+            m_3rd["away_score_actual"] = as_
+            if hs > as_:
+                winner = t1_3rd
+            elif as_ > hs:
+                winner = t2_3rd
+            else:
+                sho_win = real_shootouts.get((clean(t1_3rd), clean(t2_3rd))) or real_shootouts.get((clean(t2_3rd), clean(t1_3rd)))
+                winner = sho_win if sho_win else t1_3rd
+            m_3rd["winner"] = winner
+        else:
+            if forecast_mode:
+                pred_3rd = predictor.predict(t1_3rd, t2_3rd, neutral=True, tournament="FIFA World Cup", match_date=m_3rd["date"])
+                m_3rd["winner"] = t1_3rd if pred_3rd["home_win_prob"] >= pred_3rd["away_win_prob"] else t2_3rd
+                m_3rd["prob1"] = pred_3rd["home_win_prob"]
+                m_3rd["prob2"] = pred_3rd["away_win_prob"]
+                m_3rd["prob_draw"] = pred_3rd["draw_prob"]
+                m_3rd["predicted_outcome"] = pred_3rd["predicted_outcome"]
+            else:
+                m_3rd["winner"] = "TBD"
 
-    t1_final = sf_winners.get("Match 101", "SF W1")
-    t2_final = sf_winners.get("Match 102", "SF W2")
+    t1_final = winners.get("Match 101", "SF W1")
+    t2_final = winners.get("Match 102", "SF W2")
     m_final = bracket["final"]
     m_final["team1_actual"] = t1_final
     m_final["team2_actual"] = t2_final
-    pred_final = predictor.predict(t1_final, t2_final, neutral=True, tournament="FIFA World Cup", match_date=m_final["date"])
-    m_final["winner"] = t1_final if pred_final["home_win_prob"] >= pred_final["away_win_prob"] else t2_final
-    m_final["prob1"] = pred_final["home_win_prob"]
-    m_final["prob2"] = pred_final["away_win_prob"]
-    m_final["prob_draw"] = pred_final["draw_prob"]
-    m_final["predicted_outcome"] = pred_final["predicted_outcome"]
+    
+    if is_placeholder(t1_final) or is_placeholder(t2_final) or t1_final == "TBD" or t2_final == "TBD":
+        m_final["winner"] = "TBD"
+    else:
+        res = knockout_played.get((clean(t1_final), clean(t2_final))) or knockout_played.get((clean(t2_final), clean(t1_final)))
+        if res is not None:
+            hs, as_ = res
+            m_final["home_score_actual"] = hs
+            m_final["away_score_actual"] = as_
+            if hs > as_:
+                winner = t1_final
+            elif as_ > hs:
+                winner = t2_final
+            else:
+                sho_win = real_shootouts.get((clean(t1_final), clean(t2_final))) or real_shootouts.get((clean(t2_final), clean(t1_final)))
+                winner = sho_win if sho_win else t1_final
+            m_final["winner"] = winner
+        else:
+            if forecast_mode:
+                pred_final = predictor.predict(t1_final, t2_final, neutral=True, tournament="FIFA World Cup", match_date=m_final["date"])
+                m_final["winner"] = t1_final if pred_final["home_win_prob"] >= pred_final["away_win_prob"] else t2_final
+                m_final["prob1"] = pred_final["home_win_prob"]
+                m_final["prob2"] = pred_final["away_win_prob"]
+                m_final["prob_draw"] = pred_final["draw_prob"]
+                m_final["predicted_outcome"] = pred_final["predicted_outcome"]
+            else:
+                m_final["winner"] = "TBD"
 
     return bracket
 
@@ -561,20 +734,50 @@ def render_bracket_match_html(m, match_title):
     # Check if prediction is available
     has_pred = "prob1" in m and "prob2" in m
     
-    # Winner highlighting
-    w = m.get("winner", "")
-    win1 = "winner" if w == t1 and has_pred else ""
-    win2 = "winner" if w == t2 and has_pred else ""
+    # Deciding scores and winner highlight
+    right_lbl1 = ""
+    right_lbl2 = ""
+    win1 = ""
+    win2 = ""
     
+    # If played in real life, show actual score (and highlight shootout winner if draw)
+    if "home_score_actual" in m and "away_score_actual" in m:
+        hs = int(m["home_score_actual"])
+        as_ = int(m["away_score_actual"])
+        
+        real_shootouts = load_real_shootouts()
+        sho_win = real_shootouts.get((t1_clean, t2_clean)) or real_shootouts.get((t2_clean, t1_clean))
+        
+        s1_suffix = " (p)" if (hs == as_ and sho_win == t1) else ""
+        s2_suffix = " (p)" if (hs == as_ and sho_win == t2) else ""
+        
+        right_lbl1 = f'<span class="bracket-team-score">{hs}{s1_suffix}</span>'
+        right_lbl2 = f'<span class="bracket-team-score">{as_}{s2_suffix}</span>'
+        
+        actual_winner = t1 if (hs > as_ or (hs == as_ and sho_win == t1)) else t2
+        win1 = "winner" if actual_winner == t1 else ""
+        win2 = "winner" if actual_winner == t2 else ""
+    else:
+        # Not played yet, show prediction percentages if available
+        if has_pred:
+            right_lbl1 = f'<span class="bracket-team-prob">{m["prob1"]*100:.0f}%</span>'
+            right_lbl2 = f'<span class="bracket-team-prob">{m["prob2"]*100:.0f}%</span>'
+            
+            w = m.get("winner", "")
+            win1 = "winner" if w == t1 else ""
+            win2 = "winner" if w == t2 else ""
+        else:
+            right_lbl1 = ''
+            right_lbl2 = ''
+            win1 = ""
+            win2 = ""
+            
     # Flag tags
     flag1_html = f'<img class="bracket-team-flag" src="{flag1}" crossorigin="anonymous" />' if flag1 else '<div class="bracket-team-flag-placeholder"></div>'
     flag2_html = f'<img class="bracket-team-flag" src="{flag2}" crossorigin="anonymous" />' if flag2 else '<div class="bracket-team-flag-placeholder"></div>'
     
-    prob1_lbl = f'{m["prob1"]*100:.0f}%' if has_pred else ''
-    prob2_lbl = f'{m["prob2"]*100:.0f}%' if has_pred else ''
-    
     probs_bar_html = ""
-    if has_pred:
+    if has_pred and "home_score_actual" not in m:
         h_prob = m["prob1"] * 100
         d_prob = m["prob_draw"] * 100
         a_prob = m["prob2"] * 100
@@ -595,12 +798,12 @@ def render_bracket_match_html(m, match_title):
         <div class="bracket-team {win1}">
             {flag1_html}
             <span class="bracket-team-name" title="{t1}">{t1}</span>
-            <span class="bracket-team-prob">{prob1_lbl}</span>
+            {right_lbl1}
         </div>
         <div class="bracket-team {win2}">
             {flag2_html}
             <span class="bracket-team-name" title="{t2}">{t2}</span>
-            <span class="bracket-team-prob">{prob2_lbl}</span>
+            {right_lbl2}
         </div>
         {probs_bar_html}
     </div>
@@ -683,13 +886,56 @@ def main():
     wc_schedule = load_wc_schedule()
     bracket_structure = load_knockout_bracket_structure()
 
+    # Resolve the actual real-world bracket state (no ELO forecast path)
+    # and automatically update the results.csv file with qualified teams
+    try:
+        resolved_actual = resolve_bracket_state(bracket_structure, predictor, forecast_mode=False)
+        
+        resolved_matches = []
+        for m in resolved_actual["r32"]:
+            resolved_matches.append((m["team1_actual"], m["team2_actual"]))
+        for m in resolved_actual["r16"]:
+            resolved_matches.append((m["team1_actual"], m["team2_actual"]))
+        for m in resolved_actual["qf"]:
+            resolved_matches.append((m["team1_actual"], m["team2_actual"]))
+        for m in resolved_actual["sf"]:
+            resolved_matches.append((m["team1_actual"], m["team2_actual"]))
+        m_3rd = resolved_actual["third_place"]
+        resolved_matches.append((m_3rd["team1_actual"], m_3rd["team2_actual"]))
+        m_final = resolved_actual["final"]
+        resolved_matches.append((m_final["team1_actual"], m_final["team2_actual"]))
+
+        csv_path = 'data/results.csv'
+        entire_df = pd.read_csv(csv_path)
+        updated = False
+        for idx, (t1_res, t2_res) in enumerate(resolved_matches):
+            row_idx = len(entire_df) - 32 + idx
+            current_t1 = str(entire_df.loc[row_idx, 'home_team'])
+            current_t2 = str(entire_df.loc[row_idx, 'away_team'])
+            
+            if t1_res and t1_res != "TBD" and not is_placeholder(t1_res) and current_t1 != t1_res:
+                entire_df.loc[row_idx, 'home_team'] = t1_res
+                updated = True
+            if t2_res and t2_res != "TBD" and not is_placeholder(t2_res) and current_t2 != t2_res:
+                entire_df.loc[row_idx, 'away_team'] = t2_res
+                updated = True
+                
+        if updated:
+            entire_df.to_csv(csv_path, index=False)
+            st.cache_data.clear()
+            if "wc_predictions_df" in st.session_state:
+                del st.session_state.wc_predictions_df
+            st.rerun()
+    except Exception as e:
+        st.error(f"Error auto-updating results.csv: {e}")
+
     # Pre-calculate group mappings
     team_to_group = {}
     for g, teams in WC2026_GROUPS.items():
         for t in teams:
             team_to_group[t] = g
 
-    # Build pairing to match info lookup for knockout stages
+    # Build pairing to match info lookup for knockout stages using resolved team names
     pairing_to_info = {}
     stages = {
         "r32": "Round of 32",
@@ -699,14 +945,18 @@ def main():
         "third_place": "3rd-Place Match",
         "final": "World Cup Final"
     }
-    for key, val in bracket_structure.items():
+    for key, val in resolved_actual.items():
         stage_name = stages[key]
         if isinstance(val, list):
             for m in val:
-                pairing_to_info[(m["team1"], m["team2"])] = (m["match_number"], stage_name)
+                t1 = m.get("team1_actual", m["team1"])
+                t2 = m.get("team2_actual", m["team2"])
+                pairing_to_info[(t1, t2)] = (m["match_number"], stage_name)
         else:
             if val:
-                pairing_to_info[(val["team1"], val["team2"])] = (val["match_number"], stage_name)
+                t1 = val.get("team1_actual", val["team1"])
+                t2 = val.get("team2_actual", val["team2"])
+                pairing_to_info[(t1, t2)] = (val["match_number"], stage_name)
 
     # Build predictions dataframe
     if "wc_predictions_df" in st.session_state and "round_name" not in st.session_state.wc_predictions_df.columns:
@@ -811,10 +1061,30 @@ def main():
     # Sort matches chronologically
     filtered_df = filtered_df.sort_values(by=['date', 'home_team'])
 
-    # ── Telemetry Summary Cards (Based on Combined dataset) ───────────────────
-    total_wc = len(df_preds)
-    total_played = df_preds['home_score'].notna().sum()
-    correct_preds = (df_preds['correct'] == "Correct").sum()
+    # Determine active stage from session state (or default to All Matches)
+    active_stage = st.session_state.get("stage_filter_segmented_control", "All Matches")
+    
+    # Filter telemetry_df for stats computation based on segmented stage control
+    telemetry_df = df_preds.copy()
+    if active_stage == "Group Stages":
+        telemetry_df = telemetry_df[telemetry_df['round_name'] == "Group Stages"]
+    elif active_stage == "Round of 32":
+        telemetry_df = telemetry_df[telemetry_df['round_name'] == "Round of 32"]
+    elif active_stage == "Round of 16":
+        telemetry_df = telemetry_df[telemetry_df['round_name'] == "Round of 16"]
+    elif active_stage == "Quarterfinals":
+        telemetry_df = telemetry_df[telemetry_df['round_name'] == "Quarterfinal"]
+    elif active_stage == "Semifinals":
+        telemetry_df = telemetry_df[telemetry_df['round_name'] == "Semifinal"]
+    elif active_stage == "3rd place":
+        telemetry_df = telemetry_df[telemetry_df['round_name'] == "3rd-Place Match"]
+    elif active_stage == "final":
+        telemetry_df = telemetry_df[telemetry_df['round_name'] == "World Cup Final"]
+
+    # ── Telemetry Summary Cards (Based on Selected stage) ────────────────────
+    total_wc = len(telemetry_df)
+    total_played = telemetry_df['home_score'].notna().sum()
+    correct_preds = (telemetry_df['correct'] == "Correct").sum()
     
     accuracy_pct = 0.0
     if total_played > 0:
@@ -845,6 +1115,7 @@ def main():
     tab1, tab2 = st.tabs(["📊 LIVE MATCH LIST", "🌳 INTERACTIVE KNOCKOUT BRACKET"])
 
     with tab1:
+        real_shootouts = load_real_shootouts()
         selected_stage = st.segmented_control(
             "Stage Filter",
             options=[
@@ -917,13 +1188,31 @@ def main():
                 flag_away_tag = f'<img class="team-mini-flag" src="{away_flag}" crossorigin="anonymous" />' if away_flag else '<div class="team-mini-flag-placeholder"></div>'
 
                 # Format score
+                shootout_winner_html = ""
+                need_shootout_input = False
+                
                 if not pd.isna(row['home_score']) and not pd.isna(row['away_score']):
-                    score_str = f"{int(row['home_score'])} - {int(row['away_score'])}"
+                    hs = int(row['home_score'])
+                    as_ = int(row['away_score'])
+                    score_str = f"{hs} - {as_}"
                     correct_status = row['correct']
                     if correct_status == "Correct":
                         accuracy_badge_html = '<span class="accuracy-badge correct">Correct ✅</span>'
                     else:
                         accuracy_badge_html = '<span class="accuracy-badge incorrect">Incorrect ❌</span>'
+                        
+                    # Check for shootout
+                    if hs == as_ and stage == "Knockout":
+                        sho_winner = real_shootouts.get((clean_name_for_mapping(home), clean_name_for_mapping(away))) or \
+                                     real_shootouts.get((clean_name_for_mapping(away), clean_name_for_mapping(home)))
+                        if sho_winner:
+                            shootout_winner_html = f"""
+                            <div style="text-align: center; font-size: 0.75rem; color: #f59e0b; font-weight: 700; margin-top: -0.4rem; margin-bottom: 0.4rem;">
+                                🏆 {sho_winner} won on penalties
+                            </div>
+                            """
+                        else:
+                            need_shootout_input = True
                 else:
                     score_str = '<span class="match-score-vs">VS</span>'
                     accuracy_badge_html = '<span class="accuracy-badge scheduled">Scheduled ⏳</span>'
@@ -959,6 +1248,8 @@ def main():
                         </div>
                     </div>
                     
+                    {shootout_winner_html}
+                    
                     <div class="match-probs-bar" style="{probs_bar_style}" title="Home: {h_prob:.1f}% | Draw: {d_prob:.1f}% | Away: {a_prob:.1f}%">
                         <div class="prob-segment home" style="width: {h_prob}%;"></div>
                         <div class="prob-segment draw" style="width: {d_prob}%;"></div>
@@ -973,6 +1264,26 @@ def main():
                 """
                 with col:
                     st.html(match_card_html)
+                    if need_shootout_input:
+                        sho_win_select = st.selectbox(
+                            f"Shootout Winner:",
+                            options=["-", home, away],
+                            key=f"sho_select_{home}_{away}_{date}"
+                        )
+                        if sho_win_select != "-":
+                            try:
+                                with open('data/shootouts.csv', 'r+', encoding='utf-8') as f_sho:
+                                    content = f_sho.read()
+                                    if content and not content.endswith('\n'):
+                                        f_sho.write('\n')
+                                    f_sho.write(f"{date},{home},{away},{sho_win_select},")
+                                st.success(f"Recorded {sho_win_select} as shootout winner!")
+                                st.cache_data.clear()
+                                if "wc_predictions_df" in st.session_state:
+                                    del st.session_state.wc_predictions_df
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error saving shootout: {e}")
 
     with tab2:
         st.subheader("Tournament Knockout Tree")
@@ -987,19 +1298,7 @@ def main():
             )
         
         # Calculate active bracket state
-        if forecast_path:
-            active_bracket = compute_bracket_forecast(bracket_structure, predictor)
-        else:
-            active_bracket = copy.deepcopy(bracket_structure)
-            # Default empty fields
-            for k in ["r32", "r16", "qf", "sf"]:
-                for m in active_bracket[k]:
-                    m["team1_actual"] = m["team1"]
-                    m["team2_actual"] = m["team2"]
-            active_bracket["third_place"]["team1_actual"] = active_bracket["third_place"]["team1"]
-            active_bracket["third_place"]["team2_actual"] = active_bracket["third_place"]["team2"]
-            active_bracket["final"]["team1_actual"] = active_bracket["final"]["team1"]
-            active_bracket["final"]["team2_actual"] = active_bracket["final"]["team2"]
+        active_bracket = resolve_bracket_state(bracket_structure, predictor, forecast_mode=forecast_path)
             
         # Compile columns
         # Col 1: R32
