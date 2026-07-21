@@ -48,6 +48,8 @@ graph TD
 * **Head-to-Head Records**: Incorporates matchup history from the last 10 meetings between the two teams.
 * **Monte Carlo Tournament Simulator**: Simulates the full 48-team FIFA World Cup 2026 (12 groups) 10,000 times to calculate round-by-round advancement probabilities.
 * **Knockout Bracket Simulator**: Resolves brackets with standard FIFA third-place allocation rules, backtracking algorithms to prevent group-mate rematches, and penalty shootout simulation.
+* **Live Match Tracker & Auto-Progression**: Tracks actual match scores, dynamically updates the tournament schedule on disk (`data/results.csv`), and advances qualified teams to their correct future slots automatically.
+* **Shootout Winner Manager**: Detects draws in knockout stages, handles real-world shootout winners from `data/shootouts.csv`, and provides an interactive selectbox to input new shootout results directly inside match cards.
 * **Server-Side Export Engine**: Renders high-resolution infographics, standing charts, leaderboards, and tree brackets as transparent PNGs served via native download prompts.
 
 ---
@@ -129,6 +131,13 @@ Launch the tactical web application locally:
 streamlit run app/streamlit_app.py
 ```
 
+### 5. Deploying to Streamlit Cloud
+
+To host the interactive dashboard on Streamlit Community Cloud:
+1. Ensure the required data and model checkpoints are pushed to GitHub. The whitelisted patterns in `.gitignore` ensure `data/results.csv`, `data/shootouts.csv`, `models/best_model.pkl`, and `models/feature_cols.pkl` are tracked and pushed.
+2. Connect your GitHub repository to [Streamlit Share](https://share.streamlit.io/).
+3. The platform will automatically install dependencies from `requirements.txt` and launch the app in the cloud.
+
 ---
 
 ## ⚙️ Detailed Working & Pipelines
@@ -163,6 +172,12 @@ Four models are trained and compared in [train.py](file:///c:/Users/Danish/Deskt
 | 🥈 Random Forest | 56.76% | 0.9179 | 0.7346 |
 | 🥉 LightGBM | 56.13% | 0.9091 | 0.7352 |
 | 📉 Logistic Regression | 55.80% | 0.9095 | 0.7359 |
+
+### 4. Live Predictions Tracker & Bracket Progression
+The [2_WC_2026_Live_Results.py](file:///c:/Users/Danish/Desktop/GITHUB%20REPOS/FIFA%20World%20Cup%20Match%20Outcome%20Predictor/app/pages/2_WC_2026_Live_Results.py) tracker keeps a live match ledger and builds the active knockout stage tree:
+* **Stage-level Telemetry**: Segmented controls filter summary telemetry (Total Matches, Played, Correct Predictions, and Model Accuracy) dynamically for the selected round.
+* **Auto-progression & disk sync**: When a match concludes, the bracket solver automatically identifies the qualifying winner, updates their team name in subsequent knockout slots in `data/results.csv` on disk, clears Streamlit's cache, and triggers a hot-reload.
+* **Shootout resolutions**: Draws in knockout matches render shootout outcomes. If the winner is missing, the match card displays an interactive selectbox to input the shootout winner and save it directly to `data/shootouts.csv`.
 
 ---
 
